@@ -21,3 +21,23 @@ class RandomAgent(Agent):
 
     def act(self, observation: Any) -> Any:
         return self.action_space.sample()
+
+
+class DeterministicAgent(Agent):
+    def __init__(self, action_space, fixed_action=None):
+        self.action_space = action_space
+        if fixed_action is not None:
+            assert self.action_space.contains(fixed_action), "fixed_action not in action_space"
+        self.fixed_action = fixed_action
+
+    def act(self, observation: Any) -> Any:
+        if self.fixed_action is not None:
+            return self.fixed_action
+        # Default: always pick the lowest-valued action
+        if hasattr(self.action_space, 'n'):
+            return 0
+        elif hasattr(self.action_space, 'low'):
+            # For continuous spaces
+            return self.action_space.low
+        else:
+            raise NotImplementedError("DeterministicAgent: unsupported action space type")
