@@ -3,7 +3,7 @@
 ## Phase 1: agent harness
 - [ ] Base `Agent` interface (observe, act)
 - [ ] Random and heuristic baselines
-- [ ] Episode recorder (state, action, reward sequence to JSONL)
+- [x] Episode recorder (state, action, reward sequence to JSONL)
 - [ ] Replay viewer
 
 ## Phase 2: LLM policies
