@@ -4,7 +4,7 @@
 - [ ] Base `Agent` interface (observe, act)
 - [ ] Random and heuristic baselines
 - [x] Episode recorder (state, action, reward sequence to JSONL)
-- [ ] Replay viewer
+- [x] Replay viewer
 
 ## Phase 2: LLM policies
 - [ ] Prompted-LLM policy on a text-observation env
