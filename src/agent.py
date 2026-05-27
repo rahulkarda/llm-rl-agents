@@ -35,9 +35,16 @@ class DeterministicAgent(Agent):
             return self.fixed_action
         # Default: always pick the lowest-valued action
         if hasattr(self.action_space, 'n'):
-            return 0
+            # Allow user to specify index, else default to 0
+            return getattr(self, 'fixed_action_index', 0)
         elif hasattr(self.action_space, 'low'):
             # For continuous spaces
             return self.action_space.low
         else:
             raise NotImplementedError("DeterministicAgent: unsupported action space type")
+
+    def set_fixed_action_index(self, idx: int):
+        if hasattr(self.action_space, 'n') and 0 <= idx < self.action_space.n:
+            self.fixed_action_index = idx
+        else:
+            raise ValueError(f"Index {idx} out of bounds for discrete action space of size {getattr(self.action_space, 'n', None)}")
