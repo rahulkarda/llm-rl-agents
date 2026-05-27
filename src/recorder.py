@@ -3,47 +3,53 @@ from typing import Any, Dict, Optional, List
 
 class EpisodeRecorder:
     """
-    Records episode transitions (state, action, reward, info) to a list and writes to JSONL.
-    Also supports loading transitions from a JSONL file for replay.
+    Records episode transitions (observation, action, reward, info) to an internal list.
+    Supports saving transitions to JSONL and loading for replay.
     """
     def __init__(self, out_path: Optional[str] = None):
         self.out_path = out_path
         self.transitions: List[Dict[str, Any]] = []
 
     def record(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
-        entry = {
+        """
+        Append a single transition to the internal buffer.
+        """
+        transition = {
             "observation": observation,
             "action": action,
             "reward": reward
         }
         if info is not None:
-            entry["info"] = info
-        self.transitions.append(entry)
+            transition["info"] = info
+        self.transitions.append(transition)
 
     def reset(self):
+        """
+        Clear all buffered transitions.
+        """
         self.transitions = []
 
     def save(self, path: Optional[str] = None):
         """
-        Write all transitions to a JSONL file.
+        Write buffered transitions to a JSONL file.
         """
-        out_file = path or self.out_path
-        if out_file is None:
+        target_path = path or self.out_path
+        if target_path is None:
             raise ValueError("No output path specified for episode recorder.")
-        with open(out_file, 'w', encoding='utf-8') as f:
-            for t in self.transitions:
-                json.dump(t, f)
+        with open(target_path, 'w', encoding='utf-8') as f:
+            for transition in self.transitions:
+                json.dump(transition, f)
                 f.write('\n')
 
     def load(self, path: Optional[str] = None):
         """
-        Load transitions from a JSONL file into self.transitions.
+        Load transitions from a JSONL file into the buffer.
         """
-        in_file = path or self.out_path
-        if in_file is None:
+        source_path = path or self.out_path
+        if source_path is None:
             raise ValueError("No input path specified for episode recorder.")
         self.transitions = []
-        with open(in_file, 'r', encoding='utf-8') as f:
+        with open(source_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line:
