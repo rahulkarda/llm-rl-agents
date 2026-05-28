@@ -3,16 +3,21 @@ from typing import Any, Dict, Optional, List
 
 class EpisodeRecorder:
     """
-    Records episode transitions (observation, action, reward, info) to an internal list.
-    Supports saving transitions to JSONL and loading for replay. Provides summary statistics for episodes.
+    Store episode transitions (observation, action, reward, info) in memory.
+    Supports saving transitions to JSONL, loading for replay, and computing episode summary statistics.
     """
     def __init__(self, out_path: Optional[str] = None):
         self.out_path = out_path
         self.transitions: List[Dict[str, Any]] = []
 
-    def record(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
+    def record_transition(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
         """
-        Append a single transition to the internal buffer.
+        Add a single transition to the buffer.
+        Args:
+            observation: Environment observation/state.
+            action: Action taken by agent.
+            reward: Reward obtained.
+            info: Optional info dict from environment.
         """
         transition = {
             "observation": observation,
@@ -23,15 +28,17 @@ class EpisodeRecorder:
             transition["info"] = info
         self.transitions.append(transition)
 
-    def reset(self):
+    def clear(self):
         """
-        Clear all buffered transitions.
+        Empty the transition buffer.
         """
         self.transitions = []
 
-    def save(self, path: Optional[str] = None):
+    def save_to_jsonl(self, path: Optional[str] = None):
         """
-        Write buffered transitions to a JSONL file.
+        Save buffered transitions to a JSONL file.
+        Args:
+            path: Optional override path to save file.
         """
         target_path = path or self.out_path
         if target_path is None:
@@ -41,9 +48,11 @@ class EpisodeRecorder:
                 json.dump(transition, f)
                 f.write('\n')
 
-    def load(self, path: Optional[str] = None):
+    def load_from_jsonl(self, path: Optional[str] = None):
         """
         Load transitions from a JSONL file into the buffer.
+        Args:
+            path: Optional override path to load file.
         """
         source_path = path or self.out_path
         if source_path is None:
@@ -55,9 +64,9 @@ class EpisodeRecorder:
                 if line:
                     self.transitions.append(json.loads(line))
 
-    def summary(self) -> Dict[str, Any]:
+    def episode_summary(self) -> Dict[str, Any]:
         """
-        Compute episode summary statistics from transitions.
+        Compute summary statistics from the episode transitions.
         Returns:
             dict with keys: 'length', 'total_reward', 'average_reward', 'actions'
         """
