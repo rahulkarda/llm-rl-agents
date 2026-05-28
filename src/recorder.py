@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, List
 class EpisodeRecorder:
     """
     Records episode transitions (observation, action, reward, info) to an internal list.
-    Supports saving transitions to JSONL and loading for replay.
+    Supports saving transitions to JSONL and loading for replay. Provides summary statistics for episodes.
     """
     def __init__(self, out_path: Optional[str] = None):
         self.out_path = out_path
@@ -54,3 +54,20 @@ class EpisodeRecorder:
                 line = line.strip()
                 if line:
                     self.transitions.append(json.loads(line))
+
+    def summary(self) -> Dict[str, Any]:
+        """
+        Compute episode summary statistics from transitions.
+        Returns:
+            dict with keys: 'length', 'total_reward', 'average_reward', 'actions'
+        """
+        length = len(self.transitions)
+        total_reward = sum(t.get('reward', 0.0) for t in self.transitions)
+        average_reward = total_reward / length if length > 0 else 0.0
+        actions = [t.get('action') for t in self.transitions]
+        return {
+            'length': length,
+            'total_reward': total_reward,
+            'average_reward': average_reward,
+            'actions': actions
+        }
