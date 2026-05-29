@@ -18,3 +18,15 @@ Bootstrapping. See [ROADMAP.md](ROADMAP.md).
 ```bash
 pip install -r requirements.txt
 ```
+
+## Usage
+
+- See `src/agent.py` for agent interfaces and baselines (RandomAgent, DeterministicAgent).
+- Use `EpisodeRecorder` in `src/recorder.py` to log episode transitions and replay traces.
+- Tests for basic agent and recorder functionality are in `src/test_agent.py` and `src/test_recorder.py`.
+
+## Design notes
+
+- All agent classes expose a unified `act(observation)` method for compatibility.
+- Recorder supports episode summary statistics and JSONL persistence for debugging and analysis.
+- The project targets classic RL environments (e.g., CartPole, grid games) as well as text-based tasks.
