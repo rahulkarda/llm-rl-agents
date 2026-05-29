@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Phase 1: agent harness
-- [ ] Base `Agent` interface (observe, act)
+- [x] Base `Agent` interface (observe, act)
 - [ ] Random and heuristic baselines
 - [x] Episode recorder (state, action, reward sequence to JSONL)
 - [x] Replay viewer
