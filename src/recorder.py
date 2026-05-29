@@ -5,10 +5,12 @@ class EpisodeRecorder:
     """
     Store episode transitions (observation, action, reward, info) in memory.
     Supports saving transitions to JSONL, loading for replay, and computing episode summary statistics.
+    Optionally caps the number of transitions buffered for memory efficiency.
     """
-    def __init__(self, out_path: Optional[str] = None):
+    def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = None):
         self.out_path = out_path
         self.transitions: List[Dict[str, Any]] = []
+        self.max_transitions = max_transitions
 
     def record_transition(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
         """
@@ -19,6 +21,9 @@ class EpisodeRecorder:
             reward: Reward obtained.
             info: Optional info dict from environment.
         """
+        if self.max_transitions is not None and len(self.transitions) >= self.max_transitions:
+            # Drop oldest transition to keep within cap
+            self.transitions.pop(0)
         transition = {
             "observation": observation,
             "action": action,
@@ -63,6 +68,8 @@ class EpisodeRecorder:
                 line = line.strip()
                 if line:
                     self.transitions.append(json.loads(line))
+        if self.max_transitions is not None and len(self.transitions) > self.max_transitions:
+            self.transitions = self.transitions[-self.max_transitions:]
 
     def episode_summary(self) -> Dict[str, Any]:
         """
