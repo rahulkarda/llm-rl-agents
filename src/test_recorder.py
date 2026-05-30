@@ -4,16 +4,16 @@ from recorder import EpisodeRecorder
 
 def test_episode_recorder_save_load():
     recorder = EpisodeRecorder()
-    recorder.record(observation="obs1", action="a1", reward=1.0, info={"step": 1})
-    recorder.record(observation="obs2", action="a2", reward=2.0)
+    recorder.record_transition(observation="obs1", action="a1", reward=1.0, info={"step": 1})
+    recorder.record_transition(observation="obs2", action="a2", reward=2.0)
     with tempfile.NamedTemporaryFile(delete=False) as tmp:
         tmp_path = tmp.name
     try:
-        recorder.save(tmp_path)
+        recorder.save_to_jsonl(tmp_path)
         # Reset and load
-        recorder.reset()
+        recorder.clear()
         assert len(recorder.transitions) == 0
-        recorder.load(tmp_path)
+        recorder.load_from_jsonl(tmp_path)
         assert len(recorder.transitions) == 2
         assert recorder.transitions[0]["observation"] == "obs1"
         assert recorder.transitions[1]["reward"] == 2.0
