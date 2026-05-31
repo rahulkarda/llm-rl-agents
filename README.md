@@ -25,6 +25,33 @@ pip install -r requirements.txt
 - Use `EpisodeRecorder` in `src/recorder.py` to log episode transitions and replay traces.
 - Tests for basic agent and recorder functionality are in `src/test_agent.py` and `src/test_recorder.py`.
 
+### EpisodeRecorder workflow
+
+1. Instantiate an `EpisodeRecorder` (optionally with `out_path`):
+   ```python
+   from recorder import EpisodeRecorder
+   recorder = EpisodeRecorder(out_path="episode.jsonl")
+   ```
+2. After each environment step, record the transition:
+   ```python
+   recorder.record_transition(observation, action, reward, info)
+   ```
+3. Save episode to JSONL for later replay or analysis:
+   ```python
+   recorder.save_to_jsonl()  # Uses out_path
+   ```
+4. Load and replay an episode:
+   ```python
+   recorder.load_from_jsonl("episode.jsonl")
+   for t in recorder.transitions:
+       print(t)
+   ```
+5. Compute summary statistics:
+   ```python
+   summary = recorder.episode_summary()
+   print(summary)
+   ```
+
 ## Design notes
 
 - All agent classes expose a unified `act(observation)` method for compatibility.
