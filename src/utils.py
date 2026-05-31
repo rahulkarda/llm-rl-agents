@@ -1,3 +1,8 @@
+"""
+Utility functions for nested dict manipulation and pretty-printing.
+- flatten_dict: flattens nested dicts using dotted keys.
+- dict_to_str: pretty-prints (possibly nested) dicts for logging/debugging.
+"""
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
     items = []
