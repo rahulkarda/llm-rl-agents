@@ -7,7 +7,7 @@ class EpisodeRecorder:
     Supports saving transitions to JSONL, loading for replay, and computing episode summary statistics.
     Optionally caps the number of transitions buffered for memory efficiency.
     """
-    def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = 2000):
+    def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = 1000):
         self.out_path = out_path
         self.transitions: List[Dict[str, Any]] = []
         self.max_transitions = max_transitions
