@@ -1,5 +1,5 @@
 import json
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional, List, Callable
 
 class EpisodeRecorder:
     """
@@ -87,3 +87,13 @@ class EpisodeRecorder:
             'average_reward': average_reward,
             'actions': actions
         }
+
+    def filter_transitions(self, predicate: Callable[[Dict[str, Any]], bool]) -> List[Dict[str, Any]]:
+        """
+        Return a list of transitions matching a predicate function.
+        Args:
+            predicate: Callable taking a transition dict and returning True/False.
+        Returns:
+            List of transitions for which predicate returns True.
+        """
+        return [t for t in self.transitions if predicate(t)]
