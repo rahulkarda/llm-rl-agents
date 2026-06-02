@@ -3,9 +3,20 @@ from typing import Any, Dict, Optional, List, Callable
 
 class EpisodeRecorder:
     """
-    Store episode transitions (observation, action, reward, info) in memory.
-    Supports saving transitions to JSONL, loading for replay, and computing episode summary statistics.
-    Optionally caps the number of transitions buffered for memory efficiency.
+    Stores episode transitions (observation, action, reward, info) for RL episodes.
+    Supports saving transitions to JSONL for debugging/replay, loading episode traces, and computing summary statistics.
+
+    Usage:
+        recorder = EpisodeRecorder(out_path="episode.jsonl")
+        recorder.record_transition(obs, action, reward, info)
+        recorder.save_to_jsonl()  # writes JSONL file
+        recorder.load_from_jsonl("episode.jsonl")  # replay episode
+        summary = recorder.episode_summary()
+
+    Design notes:
+        - Transition buffer is capped by max_transitions (default 1000) for memory efficiency.
+        - Transitions are dicts with keys: observation, action, reward, info (optional).
+        - Supports filtering transitions for analysis/debugging.
     """
     def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = 1000):
         self.out_path = out_path
