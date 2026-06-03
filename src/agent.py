@@ -7,6 +7,17 @@ Subclasses implement 'act', and optionally manage internal state (via 'reset').
 Current provided agents:
 - RandomAgent: emits random actions from the action space.
 - DeterministicAgent: always emits a fixed action or the lowest-valued action.
+
+Usage:
+    # Instantiate an agent with env.action_space
+    agent = RandomAgent(env.action_space)
+    observation = ...
+    action = agent.act(observation)
+
+Extension notes:
+    - To make a new agent, subclass Agent and implement act().
+    - For LLM-based policies, override act() to prompt the model and parse the action.
+    - reset() can be overridden to clear internal state between episodes.
 """
 from abc import ABC, abstractmethod
 from typing import Any
