@@ -2,7 +2,7 @@
 
 ## Phase 1: agent harness
 - [x] Base `Agent` interface (observe, act)
-- [ ] Random and heuristic baselines
+- [x] Random and heuristic baselines
 - [x] Episode recorder (state, action, reward sequence to JSONL)
 - [x] Replay viewer
 
