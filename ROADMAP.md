@@ -7,7 +7,7 @@
 - [x] Replay viewer
 
 ## Phase 2: LLM policies
-- [ ] Prompted-LLM policy on a text-observation env
+- [x] Prompted-LLM policy on a text-observation env
 - [ ] Tool-use parsing (action JSON extraction with retries)
 - [ ] System prompt templating per env
 - [ ] Token + latency instrumentation
