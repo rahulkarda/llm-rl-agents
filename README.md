@@ -52,6 +52,26 @@ pip install -r requirements.txt
    print(summary)
    ```
 
+### LLM Agent integration
+
+- Use `PromptedLLMAgent` from `src/llm_agent.py` to wrap a prompted OpenAI LLM as an RL agent.
+- Requires an OpenAI API key (set environment variable `OPENAI_API_KEY`).
+
+Example usage:
+```python
+from llm_agent import PromptedLLMAgent
+import gymnasium as gym
+
+env = gym.make('CartPole-v1')
+agent = PromptedLLMAgent(env.action_space, system_prompt="You are playing CartPole.")
+obs, _ = env.reset()
+action = agent.act(obs)
+# Use action in env.step(action)
+```
+- The agent prompts the LLM with the observation and expects a JSON action (e.g., `{"action": 0}`).
+- If parsing fails or invalid action is returned, agent falls back to random action.
+- Supports customizing system prompt and model (default: `gpt-3.5-turbo`).
+
 ## Design notes
 
 - All agent classes expose a unified `act(observation)` method for compatibility.
