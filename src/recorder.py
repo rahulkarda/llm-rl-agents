@@ -14,11 +14,11 @@ class EpisodeRecorder:
         summary = recorder.episode_summary()
 
     Design notes:
-        - Transition buffer is capped by max_transitions (default 1000) for memory efficiency.
+        - Transition buffer is capped by max_transitions (default 1500) for memory efficiency.
         - Transitions are dicts with keys: observation, action, reward, info (optional).
         - Supports filtering transitions for analysis/debugging.
     """
-    def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = 1000):
+    def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = 1500):
         self.out_path = out_path
         self.transitions: List[Dict[str, Any]] = []
         self.max_transitions = max_transitions
