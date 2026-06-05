@@ -3,6 +3,7 @@ Utility functions for nested dict manipulation and pretty-printing.
 - flatten_dict: flattens nested dicts using dotted keys.
 - dict_to_str: pretty-prints (possibly nested) dicts for logging/debugging.
 - safe_json_parse: robustly parse JSON, returning None on failure.
+- get_env_name: extract environment name from gym env or spec.
 """
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
@@ -52,4 +53,20 @@ def safe_json_parse(s):
     try:
         return json.loads(s)
     except Exception:
+        return None
+
+
+def get_env_name(env_or_spec):
+    """
+    Extract the canonical environment name from a gymnasium env or spec.
+    Args:
+        env_or_spec: gymnasium.Env instance or gymnasium.env.spec
+    Returns:
+        str: environment name (e.g., 'CartPole-v1') or None if not found
+    """
+    if hasattr(env_or_spec, 'spec') and env_or_spec.spec is not None:
+        return getattr(env_or_spec.spec, 'id', None)
+    elif hasattr(env_or_spec, 'id'):
+        return env_or_spec.id
+    else:
         return None
