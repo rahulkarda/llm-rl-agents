@@ -16,13 +16,15 @@ class PromptedLLMAgent(Agent):
         model: OpenAI model name (default: 'gpt-3.5-turbo').
         api_key: OpenAI API key (default: from env OPENAI_API_KEY).
         max_retries: Number of action extraction retries (default: 3).
+        temperature: Sampling temperature for LLM (default: 0.0 for deterministic output).
     """
-    def __init__(self, action_space, system_prompt=None, model="gpt-3.5-turbo", api_key=None, max_retries=3):
+    def __init__(self, action_space, system_prompt=None, model="gpt-3.5-turbo", api_key=None, max_retries=3, temperature=0.0):
         self.action_space = action_space
         self.system_prompt = system_prompt or "You are an RL agent. Given a text observation, output a JSON action."
         self.model = model
         openai.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.max_retries = max_retries
+        self.temperature = temperature
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(0.5))
     def _prompt_and_parse_action(self, observation):
@@ -39,7 +41,7 @@ class PromptedLLMAgent(Agent):
                 {"role": "user", "content": prompt}
             ],
             max_tokens=32,
-            temperature=0.3
+            temperature=self.temperature
         )
         output = response["choices"][0]["message"]["content"].strip()
         parsed = safe_json_parse(output)
