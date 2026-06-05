@@ -8,7 +8,7 @@
 
 ## Phase 2: LLM policies
 - [x] Prompted-LLM policy on a text-observation env
-- [ ] Tool-use parsing (action JSON extraction with retries)
+- [x] Tool-use parsing (action JSON extraction with retries)
 - [ ] System prompt templating per env
 - [ ] Token + latency instrumentation
 
