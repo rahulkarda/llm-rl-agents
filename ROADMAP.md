@@ -10,7 +10,7 @@
 - [x] Prompted-LLM policy on a text-observation env
 - [x] Tool-use parsing (action JSON extraction with retries)
 - [ ] System prompt templating per env
-- [ ] Token + latency instrumentation
+- [x] Token + latency instrumentation
 
 ## Phase 3: environments
 - [ ] TextWorld-style grid game wrapper
