@@ -16,10 +16,10 @@ class PromptedLLMAgent(Agent):
         model: OpenAI model name (default: 'gpt-3.5-turbo').
         api_key: OpenAI API key (default: from env OPENAI_API_KEY).
         max_retries: Number of action extraction retries (default: 3).
-        temperature: Sampling temperature for LLM (default: 0.0 for deterministic output).
+        temperature: Sampling temperature for LLM (default: 0.2 for more diverse output).
         instrument: If True, record token usage and latency statistics.
     """
-    def __init__(self, action_space, system_prompt=None, model="gpt-3.5-turbo", api_key=None, max_retries=3, temperature=0.0, instrument=False):
+    def __init__(self, action_space, system_prompt=None, model="gpt-3.5-turbo", api_key=None, max_retries=3, temperature=0.2, instrument=False):
         self.action_space = action_space
         self.system_prompt = system_prompt or "You are an RL agent. Given a text observation, output a JSON action."
         self.model = model
