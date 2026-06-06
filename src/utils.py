@@ -1,9 +1,40 @@
 """
 Utility functions for nested dict manipulation and pretty-printing.
-- flatten_dict: flattens nested dicts using dotted keys.
-- dict_to_str: pretty-prints (possibly nested) dicts for logging/debugging.
-- safe_json_parse: robustly parse JSON, returning None on failure.
-- get_env_name: extract environment name from gym env or spec.
+
+Functions:
+- flatten_dict: Flattens nested dicts using dotted keys.
+- dict_to_str: Pretty-prints (possibly nested) dicts for logging/debugging.
+- safe_json_parse: Robustly parse JSON, returning None on failure.
+- get_env_name: Extract environment name from gym env or spec.
+
+Usage examples:
+    # Flatten a nested dict
+    d = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
+    flat = flatten_dict(d)
+    # flat: {'a': 1, 'b.c': 2, 'b.d.e': 3}
+
+    # Pretty-print a dict
+    s = dict_to_str(d)
+    print(s)
+    # Output:
+    # a: 1
+    # b:
+    #   c: 2
+    #   d:
+    #     e: 3
+
+    # Safe JSON parse from LLM output
+    obj = safe_json_parse('{"action": 0}')  # returns dict or None
+
+    # Get env name
+    import gymnasium as gym
+    env = gym.make('CartPole-v1')
+    name = get_env_name(env)  # 'CartPole-v1'
+
+Notes:
+- These utilities are used for agent logging, episode trace formatting, and robust action extraction.
+- flatten_dict is useful for flattening nested info dicts for logging or CSV export.
+- dict_to_str helps with readable debug output, especially for deeply nested transitions.
 """
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
