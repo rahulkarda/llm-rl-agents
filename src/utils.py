@@ -6,6 +6,7 @@ Functions:
 - dict_to_str: Pretty-prints (possibly nested) dicts for logging/debugging.
 - safe_json_parse: Robustly parse JSON, returning None on failure.
 - get_env_name: Extract environment name from gym env or spec.
+- is_discrete_space: Check if gym action space is discrete.
 
 Usage examples:
     # Flatten a nested dict
@@ -30,6 +31,11 @@ Usage examples:
     import gymnasium as gym
     env = gym.make('CartPole-v1')
     name = get_env_name(env)  # 'CartPole-v1'
+
+    # Check action space type
+    from gymnasium.spaces import Discrete, Box
+    is_discrete = is_discrete_space(env.action_space)
+    # True for Discrete, False for Box
 
 Notes:
 - These utilities are used for agent logging, episode trace formatting, and robust action extraction.
@@ -101,3 +107,16 @@ def get_env_name(env_or_spec):
         return env_or_spec.id
     else:
         return None
+
+
+def is_discrete_space(space):
+    """
+    Returns True if the gymnasium action space is Discrete, else False.
+    Useful for agent logic that branches by action space type.
+    Args:
+        space: gymnasium.Space instance
+    Returns:
+        bool
+    """
+    # Avoid direct import to reduce dependency risk, check type by class name
+    return getattr(space, '__class__', None).__name__ == 'Discrete' or hasattr(space, 'n')
