@@ -20,21 +20,28 @@ class EpisodeRecorder:
     """
     def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = 1500):
         self.out_path = out_path
-        self.transitions: List[Dict[str, Any]] = []
+        self._transitions: List[Dict[str, Any]] = []  # clarified name
         self.max_transitions = max_transitions
+
+    @property
+    def transitions(self) -> List[Dict[str, Any]]:
+        """
+        Access the current episode transitions buffer (read-only).
+        """
+        return self._transitions
 
     def record_transition(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
         """
-        Add a single transition to the buffer.
+        Add a single transition to the episode buffer.
         Args:
             observation: Environment observation/state.
             action: Action taken by agent.
             reward: Reward obtained.
             info: Optional info dict from environment.
         """
-        if self.max_transitions is not None and len(self.transitions) >= self.max_transitions:
-            # Drop oldest transition to keep within cap
-            self.transitions.pop(0)
+        # Buffer cap: drop oldest if over max_transitions
+        if self.max_transitions is not None and len(self._transitions) >= self.max_transitions:
+            self._transitions.pop(0)
         transition = {
             "observation": observation,
             "action": action,
@@ -42,17 +49,17 @@ class EpisodeRecorder:
         }
         if info is not None:
             transition["info"] = info
-        self.transitions.append(transition)
+        self._transitions.append(transition)
 
     def clear(self):
         """
-        Empty the transition buffer.
+        Empty the transition buffer for the episode.
         """
-        self.transitions = []
+        self._transitions = []
 
     def save_to_jsonl(self, path: Optional[str] = None):
         """
-        Save buffered transitions to a JSONL file.
+        Save buffered episode transitions to a JSONL file.
         Args:
             path: Optional override path to save file.
         """
@@ -60,27 +67,28 @@ class EpisodeRecorder:
         if target_path is None:
             raise ValueError("No output path specified for episode recorder.")
         with open(target_path, 'w', encoding='utf-8') as f:
-            for transition in self.transitions:
+            for transition in self._transitions:
                 json.dump(transition, f)
                 f.write('\n')
 
     def load_from_jsonl(self, path: Optional[str] = None):
         """
-        Load transitions from a JSONL file into the buffer.
+        Load transitions from a JSONL file into the buffer. Overwrites current episode buffer.
         Args:
             path: Optional override path to load file.
         """
         source_path = path or self.out_path
         if source_path is None:
             raise ValueError("No input path specified for episode recorder.")
-        self.transitions = []
+        buffer: List[Dict[str, Any]] = []
         with open(source_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    self.transitions.append(json.loads(line))
-        if self.max_transitions is not None and len(self.transitions) > self.max_transitions:
-            self.transitions = self.transitions[-self.max_transitions:]
+                    buffer.append(json.loads(line))
+        if self.max_transitions is not None and len(buffer) > self.max_transitions:
+            buffer = buffer[-self.max_transitions:]
+        self._transitions = buffer
 
     def episode_summary(self) -> Dict[str, Any]:
         """
@@ -88,10 +96,10 @@ class EpisodeRecorder:
         Returns:
             dict with keys: 'length', 'total_reward', 'average_reward', 'actions'
         """
-        length = len(self.transitions)
-        total_reward = sum(t.get('reward', 0.0) for t in self.transitions)
+        length = len(self._transitions)
+        total_reward = sum(t.get('reward', 0.0) for t in self._transitions)
         average_reward = total_reward / length if length > 0 else 0.0
-        actions = [t.get('action') for t in self.transitions]
+        actions = [t.get('action') for t in self._transitions]
         return {
             'length': length,
             'total_reward': total_reward,
@@ -107,4 +115,4 @@ class EpisodeRecorder:
         Returns:
             List of transitions for which predicate returns True.
         """
-        return [t for t in self.transitions if predicate(t)]
+        return [t for t in self._transitions if predicate(t)]
