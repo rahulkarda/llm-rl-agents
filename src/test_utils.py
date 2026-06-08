@@ -1,4 +1,4 @@
-from utils import flatten_dict, dict_to_str
+from utils import flatten_dict, dict_to_str, safe_json_parse
 
 def test_flatten_dict_basic():
     d = {
@@ -29,8 +29,16 @@ def test_dict_to_str_example():
     assert 'w:' in s and 'u:' in s
     assert '9' in s
 
+def test_safe_json_parse():
+    good = '{"action": 5}'
+    bad = '{action: 5}'  # Invalid JSON
+    assert safe_json_parse(good) == {"action": 5}, f"Failed to parse valid JSON: {good}"
+    assert safe_json_parse(bad) is None, f"Should return None for invalid JSON: {bad}"
+
 if __name__ == "__main__":
     test_flatten_dict_basic()
     print("flatten_dict basic test passed.")
     test_dict_to_str_example()
     print("dict_to_str example test passed.")
+    test_safe_json_parse()
+    print("safe_json_parse test passed.")
