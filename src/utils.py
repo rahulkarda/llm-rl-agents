@@ -7,6 +7,7 @@ Functions:
 - safe_json_parse: Robustly parse JSON, returning None on failure.
 - get_env_name: Extract environment name from gym env or spec.
 - is_discrete_space: Check if gym action space is discrete.
+- hash_dict: Produce a stable hash for a dict (for caching/debugging).
 
 Usage examples:
     # Flatten a nested dict
@@ -37,10 +38,15 @@ Usage examples:
     is_discrete = is_discrete_space(env.action_space)
     # True for Discrete, False for Box
 
+    # Hash a dict
+    d = {'foo': 1, 'bar': 2}
+    h = hash_dict(d)  # returns an int hash
+
 Notes:
 - These utilities are used for agent logging, episode trace formatting, and robust action extraction.
 - flatten_dict is useful for flattening nested info dicts for logging or CSV export.
 - dict_to_str helps with readable debug output, especially for deeply nested transitions.
+- hash_dict enables stable dict hashing for caching or trace comparison.
 """
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
@@ -120,3 +126,20 @@ def is_discrete_space(space):
     """
     # Avoid direct import to reduce dependency risk, check type by class name
     return getattr(space, '__class__', None).__name__ == 'Discrete' or hasattr(space, 'n')
+
+
+def hash_dict(d):
+    """
+    Return a stable integer hash for a dict (including nested dicts).
+    Useful for caching, episode trace deduplication, or quick comparison.
+    Args:
+        d: dict (possibly nested)
+    Returns:
+        int: hash value
+    """
+    try:
+        # Use json.dumps with sort_keys for stable serialization
+        s = json.dumps(d, sort_keys=True, separators=(',', ':'))
+        return hash(s)
+    except Exception:
+        return hash(str(d))
