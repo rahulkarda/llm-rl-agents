@@ -24,7 +24,11 @@ class PromptedLLMAgent(Agent):
         self.action_space = action_space
         self._base_system_prompt = system_prompt or "You are an RL agent. Given a text observation, output a JSON action."
         self.system_prompt_template = system_prompt_template
-        self.template_kwargs = template_kwargs or {}
+        # Fix: avoid mutable default for template_kwargs
+        if template_kwargs is None:
+            self.template_kwargs = {}
+        else:
+            self.template_kwargs = dict(template_kwargs)  # copy to avoid mutation issues
         self.model = model
         openai.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.max_retries = max_retries
@@ -53,7 +57,11 @@ class PromptedLLMAgent(Agent):
             template_kwargs: Dict for template variables
         """
         self.system_prompt_template = template
-        self.template_kwargs = template_kwargs or {}
+        # Fix: avoid mutable default for template_kwargs
+        if template_kwargs is None:
+            self.template_kwargs = {}
+        else:
+            self.template_kwargs = dict(template_kwargs)
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(0.5))
     def _prompt_and_parse_action(self, observation):
