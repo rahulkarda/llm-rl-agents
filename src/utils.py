@@ -8,6 +8,7 @@ Functions:
 - get_env_name: Extract environment name from gym env or spec.
 - is_discrete_space: Check if gym action space is discrete.
 - hash_dict: Produce a stable hash for a dict (for caching/debugging).
+- deep_copy_dict: Return a deep copy of a dict (for safe mutation).
 
 Usage examples:
     # Flatten a nested dict
@@ -42,11 +43,15 @@ Usage examples:
     d = {'foo': 1, 'bar': 2}
     h = hash_dict(d)  # returns an int hash
 
+    # Deep copy a dict
+    d2 = deep_copy_dict(d)  # returns a new dict (deep copy)
+
 Notes:
 - These utilities are used for agent logging, episode trace formatting, and robust action extraction.
 - flatten_dict is useful for flattening nested info dicts for logging or CSV export.
 - dict_to_str helps with readable debug output, especially for deeply nested transitions.
 - hash_dict enables stable dict hashing for caching or trace comparison.
+- deep_copy_dict is useful for safe mutation of dicts, e.g. when storing transitions.
 """
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
@@ -143,3 +148,19 @@ def hash_dict(d):
         return hash(s)
     except Exception:
         return hash(str(d))
+
+
+def deep_copy_dict(d):
+    """
+    Return a deep copy of a dict (including nested dicts/lists).
+    Uses json serialization for simplicity; suitable for dicts with JSON-serializable contents.
+    Args:
+        d: dict to copy
+    Returns:
+        dict: deep copy
+    """
+    try:
+        return json.loads(json.dumps(d))
+    except Exception:
+        import copy
+        return copy.deepcopy(d)
