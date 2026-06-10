@@ -9,6 +9,7 @@ Functions:
 - is_discrete_space: Check if gym action space is discrete.
 - hash_dict: Produce a stable hash for a dict (for caching/debugging).
 - deep_copy_dict: Return a deep copy of a dict (for safe mutation).
+- pad_list: Pad or truncate a list to a target length.
 
 Usage examples:
     # Flatten a nested dict
@@ -46,12 +47,18 @@ Usage examples:
     # Deep copy a dict
     d2 = deep_copy_dict(d)  # returns a new dict (deep copy)
 
+    # Pad a list
+    x = [1, 2]
+    padded = pad_list(x, 4, pad_value=0)  # [1, 2, 0, 0]
+    truncated = pad_list([1,2,3,4,5], 3)  # [1,2,3]
+
 Notes:
 - These utilities are used for agent logging, episode trace formatting, and robust action extraction.
 - flatten_dict is useful for flattening nested info dicts for logging or CSV export.
 - dict_to_str helps with readable debug output, especially for deeply nested transitions.
 - hash_dict enables stable dict hashing for caching or trace comparison.
 - deep_copy_dict is useful for safe mutation of dicts, e.g. when storing transitions.
+- pad_list is useful for aligning sequence lengths (e.g., episode steps, action lists).
 """
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
@@ -164,3 +171,20 @@ def deep_copy_dict(d):
     except Exception:
         import copy
         return copy.deepcopy(d)
+
+
+def pad_list(lst, target_len, pad_value=None):
+    """
+    Pad or truncate a list to a target length.
+    Useful for aligning episode steps or action lists for batch processing.
+    Args:
+        lst: list to pad/truncate
+        target_len: desired length
+        pad_value: value to pad with (default None)
+    Returns:
+        list of length target_len
+    """
+    if len(lst) >= target_len:
+        return lst[:target_len]
+    else:
+        return lst + [pad_value] * (target_len - len(lst))
