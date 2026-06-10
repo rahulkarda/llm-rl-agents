@@ -13,7 +13,7 @@
 - [x] Token + latency instrumentation
 
 ## Phase 3: environments
-- [ ] TextWorld-style grid game wrapper
+- [x] TextWorld-style grid game wrapper
 - [ ] Tic-tac-toe self-play
 - [ ] Simple negotiation env
 
