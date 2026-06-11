@@ -20,14 +20,19 @@ class SimpleGridWorldEnv(gym.Env):
         self.agent_pos = None
         self.goal_pos = None
         self.steps = 0
+        self._rng = np.random.default_rng()
 
     ACTIONS = ["north", "south", "east", "west"]
 
     def reset(self, seed=None, options=None):
-        np.random.seed(seed)
-        self.agent_pos = [np.random.randint(self.grid_size), np.random.randint(self.grid_size)]
+        # Properly seed the environment
+        if seed is not None:
+            self._rng = np.random.default_rng(seed)
+        else:
+            self._rng = np.random.default_rng()
+        self.agent_pos = [self._rng.integers(self.grid_size), self._rng.integers(self.grid_size)]
         while True:
-            self.goal_pos = [np.random.randint(self.grid_size), np.random.randint(self.grid_size)]
+            self.goal_pos = [self._rng.integers(self.grid_size), self._rng.integers(self.grid_size)]
             if self.goal_pos != self.agent_pos:
                 break
         self.steps = 0
@@ -40,7 +45,7 @@ class SimpleGridWorldEnv(gym.Env):
             try:
                 action_idx = self.ACTIONS.index(action.lower())
             except Exception:
-                action_idx = np.random.randint(4)
+                action_idx = self._rng.integers(4)
         else:
             action_idx = int(action)
 
