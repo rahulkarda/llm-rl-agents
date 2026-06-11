@@ -6,6 +6,19 @@ class EpisodeRecorder:
     Stores episode transitions (observation, action, reward, info) for RL episodes.
     Supports saving transitions to JSONL for debugging/replay, loading episode traces, and computing summary statistics.
 
+    Workflow:
+    - Use record_transition() after each env step to add (obs, action, reward, info) to buffer.
+    - save_to_jsonl() writes current buffer to JSONL file for persistent replay or analysis.
+    - load_from_jsonl() loads transitions from JSONL file, replacing buffer (for replay/debug).
+    - episode_summary() computes stats (length, reward, actions) from buffer.
+    - clear() empties buffer between episodes.
+
+    Buffer behavior:
+    - Buffer is capped by max_transitions (default 1500). Oldest transitions are dropped if exceeded.
+    - Buffer is always in-memory and exposed via .transitions (read-only property).
+    - Each transition is a dict: {observation, action, reward, info (optional)}.
+    - JSONL persistence allows trace replay and debugging outside normal env loop.
+
     Usage:
         recorder = EpisodeRecorder(out_path="episode.jsonl")
         recorder.record_transition(obs, action, reward, info)
