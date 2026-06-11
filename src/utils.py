@@ -10,6 +10,7 @@ Functions:
 - hash_dict: Produce a stable hash for a dict (for caching/debugging).
 - deep_copy_dict: Return a deep copy of a dict (for safe mutation).
 - pad_list: Pad or truncate a list to a target length.
+- dict_diff: Compute the difference between two dicts (added, removed, changed keys).
 
 Usage examples:
     # Flatten a nested dict
@@ -52,6 +53,12 @@ Usage examples:
     padded = pad_list(x, 4, pad_value=0)  # [1, 2, 0, 0]
     truncated = pad_list([1,2,3,4,5], 3)  # [1,2,3]
 
+    # Dict diff
+    d1 = {'a': 1, 'b': 2}
+    d2 = {'a': 1, 'b': 3, 'c': 4}
+    diff = dict_diff(d1, d2)
+    # diff: {'added': {'c': 4}, 'removed': {}, 'changed': {'b': (2, 3)}}
+
 Notes:
 - These utilities are used for agent logging, episode trace formatting, and robust action extraction.
 - flatten_dict is useful for flattening nested info dicts for logging or CSV export.
@@ -59,6 +66,7 @@ Notes:
 - hash_dict enables stable dict hashing for caching or trace comparison.
 - deep_copy_dict is useful for safe mutation of dicts, e.g. when storing transitions.
 - pad_list is useful for aligning sequence lengths (e.g., episode steps, action lists).
+- dict_diff is useful for trace comparison, debugging, and change tracking.
 """
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
@@ -188,3 +196,22 @@ def pad_list(lst, target_len, pad_value=None):
         return lst[:target_len]
     else:
         return lst + [pad_value] * (target_len - len(lst))
+
+
+def dict_diff(d1, d2):
+    """
+    Compute the difference between two dicts.
+    Returns a dict with keys:
+      - 'added': keys present in d2 but not in d1 (with their values)
+      - 'removed': keys present in d1 but not in d2 (with their values)
+      - 'changed': keys present in both but with different values (tuple of old, new)
+    Args:
+        d1: dict (original)
+        d2: dict (updated)
+    Returns:
+        dict: {'added': ..., 'removed': ..., 'changed': ...}
+    """
+    added = {k: d2[k] for k in d2.keys() if k not in d1}
+    removed = {k: d1[k] for k in d1.keys() if k not in d2}
+    changed = {k: (d1[k], d2[k]) for k in d1.keys() & d2.keys() if d1[k] != d2[k]}
+    return {'added': added, 'removed': removed, 'changed': changed}
