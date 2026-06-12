@@ -1,5 +1,5 @@
 """
-Utility functions for nested dict manipulation and pretty-printing.
+Utility functions for nested dict manipulation, gym env introspection, and agent episode trace formatting.
 
 Functions:
 - flatten_dict: Flattens nested dicts using dotted keys.
@@ -11,6 +11,14 @@ Functions:
 - deep_copy_dict: Return a deep copy of a dict (for safe mutation).
 - pad_list: Pad or truncate a list to a target length.
 - dict_diff: Compute the difference between two dicts (added, removed, changed keys).
+
+Typical scenarios:
+- Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
+- LLM action parsing: Use safe_json_parse to robustly extract actions from LLM outputs that may be malformed or partial.
+- Gym env introspection: Use get_env_name and is_discrete_space to branch logic or annotate traces based on env specifics.
+- Trace hashing and diffing: Use hash_dict and dict_diff to compare episode traces or cache results for debugging and evaluation.
+- Buffer management: Use pad_list to align episode steps, action lists, or other sequences for analysis.
+- Safe mutation: Use deep_copy_dict to avoid accidental mutation of dicts when storing transitions or infos.
 
 Usage examples:
     # Flatten a nested dict
@@ -60,7 +68,6 @@ Usage examples:
     # diff: {'added': {'c': 4}, 'removed': {}, 'changed': {'b': (2, 3)}}
 
 Notes:
-- These utilities are used for agent logging, episode trace formatting, and robust action extraction.
 - flatten_dict is useful for flattening nested info dicts for logging or CSV export.
 - dict_to_str helps with readable debug output, especially for deeply nested transitions.
 - hash_dict enables stable dict hashing for caching or trace comparison.
@@ -157,32 +164,26 @@ def is_discrete_space(space):
 
 def hash_dict(d):
     """
-    Return a stable integer hash for a dict (including nested dicts).
-    Useful for caching, episode trace deduplication, or quick comparison.
+    Return a stable integer hash for a dict (useful for caching/debugging/trace comparison).
+    Works for dicts containing only hashable values.
     Args:
-        d: dict (possibly nested)
+        d: dict
     Returns:
-        i
+        int hash
     """
-    import hashlib
-    def _serialize(obj):
-        if isinstance(obj, dict):
-            return '{' + ','.join(f'{k}:{_serialize(v)}' for k, v in sorted(obj.items())) + '}'
-        elif isinstance(obj, list):
-            return '[' + ','.join(_serialize(x) for x in obj) + ']'
-        else:
-            return repr(obj)
-    s = _serialize(d)
-    return int(hashlib.sha256(s.encode('utf-8')).hexdigest(), 16) % (10**12)
+    try:
+        return hash(json.dumps(d, sort_keys=True, separators=(',', ':')))
+    except Exception:
+        return hash(str(d))
 
 
 def deep_copy_dict(d):
     """
-    Return a deep copy of a dict for safe mutation.
+    Return a deep copy of a dict (for safe mutation without affecting original).
     Args:
         d: dict
     Returns:
-        dict (deep copy)
+        new dict
     """
     import copy
     return copy.deepcopy(d)
@@ -190,27 +191,27 @@ def deep_copy_dict(d):
 
 def pad_list(lst, target_len, pad_value=None):
     """
-    Pad or truncate a list to a target length.
+    Pad or truncate a list to target_len.
+    If lst is shorter, pad with pad_value. If longer, truncate.
     Args:
         lst: list
         target_len: int, desired length
         pad_value: value to pad with (default None)
     Returns:
-        list
+        list of length target_len
     """
-    if len(lst) > target_len:
-        return lst[:target_len]
-    elif len(lst) < target_len:
+    if len(lst) < target_len:
         return lst + [pad_value] * (target_len - len(lst))
     else:
-        return lst
+        return lst[:target_len]
 
 
 def dict_diff(d1, d2):
     """
-    Compute the difference between two dicts:
-      - 'added': keys in d2 but not d1
-      - 'removed': keys in d1 but not d2
+    Compute difference between two dicts.
+    Returns a dict with:
+      - 'added': keys in d2 not in d1
+      - 'removed': keys in d1 not in d2
       - 'changed': keys present in both but with different values (tuple of old, new)
     Args:
         d1: dict (original)
