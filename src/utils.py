@@ -145,7 +145,14 @@ def is_discrete_space(space):
         bool
     """
     # Avoid direct import to reduce dependency risk, check type by class name
-    return getattr(space, '__class__', None).__name__ == 'Discrete' or hasattr(space, 'n')
+    cls_name = getattr(space, '__class__', None).__name__
+    # Discrete spaces
+    if cls_name == 'Discrete' or hasattr(space, 'n'):
+        return True
+    # Box spaces (should NOT be discrete)
+    if cls_name == 'Box' or hasattr(space, 'shape'):
+        return False
+    return False
 
 
 def hash_dict(d):
@@ -155,55 +162,55 @@ def hash_dict(d):
     Args:
         d: dict (possibly nested)
     Returns:
-        int: hash value
+        i
     """
-    try:
-        # Use json.dumps with sort_keys for stable serialization
-        s = json.dumps(d, sort_keys=True, separators=(',', ':'))
-        return hash(s)
-    except Exception:
-        return hash(str(d))
+    import hashlib
+    def _serialize(obj):
+        if isinstance(obj, dict):
+            return '{' + ','.join(f'{k}:{_serialize(v)}' for k, v in sorted(obj.items())) + '}'
+        elif isinstance(obj, list):
+            return '[' + ','.join(_serialize(x) for x in obj) + ']'
+        else:
+            return repr(obj)
+    s = _serialize(d)
+    return int(hashlib.sha256(s.encode('utf-8')).hexdigest(), 16) % (10**12)
 
 
 def deep_copy_dict(d):
     """
-    Return a deep copy of a dict (including nested dicts/lists).
-    Uses json serialization for simplicity; suitable for dicts with JSON-serializable contents.
+    Return a deep copy of a dict for safe mutation.
     Args:
-        d: dict to copy
+        d: dict
     Returns:
-        dict: deep copy
+        dict (deep copy)
     """
-    try:
-        return json.loads(json.dumps(d))
-    except Exception:
-        import copy
-        return copy.deepcopy(d)
+    import copy
+    return copy.deepcopy(d)
 
 
 def pad_list(lst, target_len, pad_value=None):
     """
     Pad or truncate a list to a target length.
-    Useful for aligning episode steps or action lists for batch processing.
     Args:
-        lst: list to pad/truncate
-        target_len: desired length
+        lst: list
+        target_len: int, desired length
         pad_value: value to pad with (default None)
     Returns:
-        list of length target_len
+        list
     """
-    if len(lst) >= target_len:
+    if len(lst) > target_len:
         return lst[:target_len]
-    else:
+    elif len(lst) < target_len:
         return lst + [pad_value] * (target_len - len(lst))
+    else:
+        return lst
 
 
 def dict_diff(d1, d2):
     """
-    Compute the difference between two dicts.
-    Returns a dict with keys:
-      - 'added': keys present in d2 but not in d1 (with their values)
-      - 'removed': keys present in d1 but not in d2 (with their values)
+    Compute the difference between two dicts:
+      - 'added': keys in d2 but not d1
+      - 'removed': keys in d1 but not d2
       - 'changed': keys present in both but with different values (tuple of old, new)
     Args:
         d1: dict (original)
