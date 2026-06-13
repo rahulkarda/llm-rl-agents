@@ -11,6 +11,7 @@ Functions:
 - deep_copy_dict: Return a deep copy of a dict (for safe mutation).
 - pad_list: Pad or truncate a list to a target length.
 - dict_diff: Compute the difference between two dicts (added, removed, changed keys).
+- filter_dict: Return a new dict containing only specified keys from input dict.
 
 Typical scenarios:
 - Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
@@ -19,6 +20,7 @@ Typical scenarios:
 - Trace hashing and diffing: Use hash_dict and dict_diff to compare episode traces or cache results for debugging and evaluation.
 - Buffer management: Use pad_list to align episode steps, action lists, or other sequences for analysis.
 - Safe mutation: Use deep_copy_dict to avoid accidental mutation of dicts when storing transitions or infos.
+- Selective dict extraction: Use filter_dict to keep only relevant keys from info or transition dicts.
 
 Usage examples:
     # Flatten a nested dict
@@ -67,6 +69,11 @@ Usage examples:
     diff = dict_diff(d1, d2)
     # diff: {'added': {'c': 4}, 'removed': {}, 'changed': {'b': (2, 3)}}
 
+    # Filter dict keys
+    d = {'a': 1, 'b': 2, 'c': 3}
+    filtered = filter_dict(d, ['a', 'c'])
+    # filtered: {'a': 1, 'c': 3}
+
 Notes:
 - flatten_dict is useful for flattening nested info dicts for logging or CSV export.
 - dict_to_str helps with readable debug output, especially for deeply nested transitions.
@@ -74,6 +81,7 @@ Notes:
 - deep_copy_dict is useful for safe mutation of dicts, e.g. when storing transitions.
 - pad_list is useful for aligning sequence lengths (e.g., episode steps, action lists).
 - dict_diff is useful for trace comparison, debugging, and change tracking.
+- filter_dict is useful for extracting only relevant keys from info dicts or transitions.
 """
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
@@ -144,72 +152,68 @@ def get_env_name(env_or_spec):
 
 def is_discrete_space(space):
     """
-    Returns True if the gymnasium action space is Discrete, else False.
-    Useful for agent logic that branches by action space type.
+    Return True if gymnasium action space is Discrete.
     Args:
         space: gymnasium.Space instance
     Returns:
         bool
     """
-    # Avoid direct import to reduce dependency risk, check type by class name
-    cls_name = getattr(space, '__class__', None).__name__
-    # Discrete spaces
-    if cls_name == 'Discrete' or hasattr(space, 'n'):
-        return True
-    # Box spaces (should NOT be discrete)
-    if cls_name == 'Box' or hasattr(space, 'shape'):
-        return False
-    return False
+    # Discrete spaces have 'n' attribute
+    return hasattr(space, 'n')
 
 
 def hash_dict(d):
     """
-    Return a stable integer hash for a dict (useful for caching/debugging/trace comparison).
-    Works for dicts containing only hashable values.
+    Compute a stable hash for a dict using JSON serialization.
     Args:
         d: dict
     Returns:
         int hash
     """
     try:
-        return hash(json.dumps(d, sort_keys=True, separators=(',', ':')))
+        s = json.dumps(d, sort_keys=True)
+        return hash(s)
     except Exception:
         return hash(str(d))
 
 
 def deep_copy_dict(d):
     """
-    Return a deep copy of a dict (for safe mutation without affecting original).
+    Return a deep copy of a dict (via JSON serialization).
     Args:
         d: dict
     Returns:
-        new dict
+        dict (deep copy)
     """
-    import copy
-    return copy.deepcopy(d)
+    try:
+        return json.loads(json.dumps(d))
+    except Exception:
+        import copy
+        return copy.deepcopy(d)
 
 
 def pad_list(lst, target_len, pad_value=None):
     """
-    Pad or truncate a list to target_len.
-    If lst is shorter, pad with pad_value. If longer, truncate.
+    Pad or truncate a list to a target length.
     Args:
         lst: list
-        target_len: int, desired length
-        pad_value: value to pad with (default None)
+        target_len: int
+        pad_value: value to use for padding (default None)
     Returns:
-        list of length target_len
+        list with length == target_len
     """
-    if len(lst) < target_len:
-        return lst + [pad_value] * (target_len - len(lst))
-    else:
+    n = len(lst)
+    if n > target_len:
         return lst[:target_len]
+    elif n < target_len:
+        return lst + [pad_value] * (target_len - n)
+    else:
+        return lst
 
 
 def dict_diff(d1, d2):
     """
-    Compute difference between two dicts.
-    Returns a dict with:
+    Compute difference between two dicts:
       - 'added': keys in d2 not in d1
       - 'removed': keys in d1 not in d2
       - 'changed': keys present in both but with different values (tuple of old, new)
@@ -223,3 +227,15 @@ def dict_diff(d1, d2):
     removed = {k: d1[k] for k in d1.keys() if k not in d2}
     changed = {k: (d1[k], d2[k]) for k in d1.keys() & d2.keys() if d1[k] != d2[k]}
     return {'added': added, 'removed': removed, 'changed': changed}
+
+
+def filter_dict(d, keys):
+    """
+    Return a new dict containing only the specified keys from d.
+    Args:
+        d: dict to filter
+        keys: iterable of keys to include
+    Returns:
+        dict containing only keys in 'keys', if present in d
+    """
+    return {k: d[k] for k in keys if k in d}
