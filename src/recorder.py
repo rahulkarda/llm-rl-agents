@@ -53,7 +53,7 @@ class EpisodeRecorder:
             info: Optional info dict from environment.
         """
         # Buffer cap: drop oldest if over max_transitions
-        if self.max_transitions is not None and len(self._transitions) >= self.max_transitions:
+        if self.max_transitions is not None and len(self._transitions) > self.max_transitions:
             self._transitions.pop(0)
         transition = {
             "observation": observation,
