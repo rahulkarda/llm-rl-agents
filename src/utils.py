@@ -13,6 +13,7 @@ Functions:
 - dict_diff: Compute the difference between two dicts (added, removed, changed keys).
 - filter_dict: Return a new dict containing only specified keys from input dict.
 - partition_dict: Split a dict into two dicts based on a set of keys (added).
+- deep_merge_dicts: Recursively merge two nested dicts (added).
 
 Typical scenarios:
 - Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
@@ -23,6 +24,7 @@ Typical scenarios:
 - Safe mutation: Use deep_copy_dict to avoid accidental mutation of dicts when storing transitions or infos.
 - Selective dict extraction: Use filter_dict to keep only relevant keys from info or transition dicts.
 - Dict splitting: Use partition_dict to separate fields for agent vs env, or for logging selective info.
+- Deep dict merging: Use deep_merge_dicts to combine nested dicts for config, info, or state overlays (added).
 
 Usage examples:
     # Flatten a nested dict
@@ -81,6 +83,12 @@ Usage examples:
     left, right = partition_dict(d, ['a', 'c'])
     # left: {'a': 1, 'c': 3}, right: {'b': 2}
 
+    # Deep merge dicts
+    d1 = {'a': 1, 'b': {'c': 2, 'd': 4}}
+    d2 = {'b': {'c': 3, 'e': 5}, 'f': 6}
+    merged = deep_merge_dicts(d1, d2)
+    # merged: {'a': 1, 'b': {'c': 3, 'd': 4, 'e': 5}, 'f': 6}
+
 Notes:
 - flatten_dict is useful for flattening nested info dicts for logging or CSV export.
 - dict_to_str helps with readable debug output, especially for deeply nested transitions.
@@ -90,7 +98,12 @@ Notes:
 - dict_diff is useful for trace comparison, debugging, and change tracking.
 - filter_dict is useful for extracting only relevant keys from info dicts or transitions.
 - partition_dict is useful for separating agent-related vs env-related fields or logging selective info.
+- deep_merge_dicts is useful for merging config overlays or combining nested info dicts.
 """
+import json
+import copy
+import hashlib
+
 def flatten_dict(d, parent_key='', sep='.'): 
     """Flatten a nested dictionary, joining keys with sep."""
     items = []
@@ -125,16 +138,13 @@ def dict_to_str(d, indent=0):
     return '\n'.join(lines)
 
 
-import json
-
 def safe_json_parse(s):
     """
-    Parse a string as JSON, returning the parsed object or None on failure.
-    Useful for extracting tool-use actions from LLM outputs.
+    Robustly parse a JSON string, returning None on failure.
     Args:
-        s: str, JSON to parse
+        s: JSON string
     Returns:
-        obj or None
+        parsed object (dict/list) or None
     """
     try:
         return json.loads(s)
@@ -142,20 +152,22 @@ def safe_json_parse(s):
         return None
 
 
-def get_env_name(env_or_spec):
+def get_env_name(env):
     """
-    Extract the canonical environment name from gym env or spec.
+    Extract environment name from gym env or spec.
     Args:
-        env_or_spec: gym.Env or gym.EnvSpec
+        env: gym.Env or gym.EnvSpec
     Returns:
-        str: env name
+        str name
     """
-    # Gymnasium v0.29+: env.spec.id
-    if hasattr(env_or_spec, 'spec') and env_or_spec.spec is not None:
-        return getattr(env_or_spec.spec, 'id', None)
-    if hasattr(env_or_spec, 'id'):
-        return env_or_spec.id
-    return None
+    if hasattr(env, 'spec') and env.spec is not None:
+        return env.spec.id
+    elif hasattr(env, 'name'):
+        return env.name
+    elif hasattr(env, 'id'):
+        return env.id
+    else:
+        return str(env)
 
 
 def is_discrete_space(space):
@@ -166,13 +178,8 @@ def is_discrete_space(space):
     Returns:
         bool
     """
-    # Discrete spaces have .n attribute
-    if hasattr(space, 'n'):
-        return True
-    # Box spaces have .shape and .low/.high
-    if hasattr(space, 'low') and hasattr(space, 'high'):
-        return False
-    return False
+    from gymnasium.spaces import Discrete
+    return isinstance(space, Discrete)
 
 
 def hash_dict(d):
@@ -183,9 +190,8 @@ def hash_dict(d):
     Returns:
         int hash
     """
-    # Use JSON serialization for stable hash
-    s = json.dumps(d, sort_keys=True)
-    return hash(s)
+    s = json.dumps(d, sort_keys=True, default=str)
+    return int(hashlib.md5(s.encode()).hexdigest()[:12], 16)
 
 
 def deep_copy_dict(d):
@@ -194,51 +200,50 @@ def deep_copy_dict(d):
     Args:
         d: dict
     Returns:
-        dict
+        dict (deep copy)
     """
-    import copy
     return copy.deepcopy(d)
 
 
-def pad_list(lst, target_len, pad_value=None):
+def pad_list(x, target_len, pad_value=None):
     """
-    Pad or truncate a list to target_len.
+    Pad or truncate a list to a target length.
     Args:
-        lst: list to pad/truncate
+        x: list
         target_len: desired length
-        pad_value: value to pad with (default None)
+        pad_value: value to pad with
     Returns:
-        list
+        padded/truncated list
     """
-    if len(lst) < target_len:
-        return lst + [pad_value] * (target_len - len(lst))
+    if len(x) >= target_len:
+        return x[:target_len]
     else:
-        return lst[:target_len]
+        return x + [pad_value] * (target_len - len(x))
 
 
 def dict_diff(d1, d2):
     """
-    Compute difference between two dicts.
+    Compute the difference between two dicts (added, removed, changed keys).
     Args:
-        d1: dict
-        d2: dict
+        d1: dict (original)
+        d2: dict (updated)
     Returns:
-        dict with keys 'added', 'removed', 'changed'
+        dict: {'added': ..., 'removed': ..., 'changed': ...}
     """
-    added = {k: d2[k] for k in d2.keys() if k not in d1}
-    removed = {k: d1[k] for k in d1.keys() if k not in d2}
-    changed = {k: (d1[k], d2[k]) for k in d1.keys() & d2.keys() if d1[k] != d2[k]}
+    added = {k: d2[k] for k in d2 if k not in d1}
+    removed = {k: d1[k] for k in d1 if k not in d2}
+    changed = {k: (d1[k], d2[k]) for k in d1 if k in d2 and d1[k] != d2[k]}
     return {'added': added, 'removed': removed, 'changed': changed}
 
 
 def filter_dict(d, keys):
     """
-    Return a new dict containing only the specified keys from d.
+    Return a new dict containing only specified keys from input dict.
     Args:
-        d: dict to filter
-        keys: iterable of keys to include
+        d: input dict
+        keys: iterable of keys to keep
     Returns:
-        dict containing only keys in 'keys', if present in d
+        dict
     """
     return {k: d[k] for k in keys if k in d}
 
@@ -257,3 +262,22 @@ def partition_dict(d, left_keys):
     left = {k: d[k] for k in left_keys if k in d}
     right = {k: v for k, v in d.items() if k not in left_keys}
     return left, right
+
+
+def deep_merge_dicts(d1, d2):
+    """
+    Recursively merge two dictionaries. Values from d2 overwrite d1.
+    For nested dicts, merge recursively. Does not mutate inputs.
+    Args:
+        d1: dict (base)
+        d2: dict (overlay)
+    Returns:
+        dict (merged)
+    """
+    result = deep_copy_dict(d1)
+    for k, v in d2.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = deep_merge_dicts(result[k], v)
+        else:
+            result[k] = deep_copy_dict(v) if isinstance(v, dict) else v
+    return result
