@@ -15,7 +15,7 @@
 ## Phase 3: environments
 - [x] TextWorld-style grid game wrapper
 - [x] Tic-tac-toe self-play
-- [ ] Simple negotiation env
+- [x] Simple negotiation env
 
 ## Phase 4: learning
 - [ ] In-context demonstration injection
