@@ -14,7 +14,7 @@ class EpisodeRecorder:
     - clear() empties buffer between episodes.
 
     Buffer behavior:
-    - Buffer is capped by max_transitions (default 1500). Oldest transitions are dropped if exceeded.
+    - Buffer is capped by max_transitions (default 1500). Oldest transitions are dropped only when buffer length exceeds max_transitions, keeping the newest.
     - Buffer is always in-memory and exposed via .transitions (read-only property).
     - Each transition is a dict: {observation, action, reward, info (optional)}.
     - JSONL persistence allows trace replay and debugging outside normal env loop.
@@ -33,7 +33,7 @@ class EpisodeRecorder:
     """
     def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = 1500):
         self.out_path = out_path
-        self._transitions: List[Dict[str, Any]] = []  # clarified name
+        self._transitions: List[Dict[str, Any]] = []
         self.max_transitions = max_transitions
 
     @property
@@ -52,9 +52,6 @@ class EpisodeRecorder:
             reward: Reward obtained.
             info: Optional info dict from environment.
         """
-        # Buffer cap: drop oldest if over max_transitions
-        if self.max_transitions is not None and len(self._transitions) > self.max_transitions:
-            self._transitions.pop(0)
         transition = {
             "observation": observation,
             "action": action,
@@ -63,6 +60,9 @@ class EpisodeRecorder:
         if info is not None:
             transition["info"] = info
         self._transitions.append(transition)
+        # Buffer cap: drop oldest if over max_transitions
+        if self.max_transitions is not None and len(self._transitions) > self.max_transitions:
+            self._transitions.pop(0)
 
     def clear(self):
         """
