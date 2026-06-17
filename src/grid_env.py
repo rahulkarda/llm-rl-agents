@@ -11,7 +11,7 @@ class SimpleGridWorldEnv(gym.Env):
     Rewards: +1 for reaching goal, 0 otherwise.
     Episode ends when goal is reached or max_steps is exceeded.
     """
-    def __init__(self, grid_size=6, max_steps=40):
+    def __init__(self, grid_size=7, max_steps=45):
         super().__init__()
         self.grid_size = grid_size
         self.max_steps = max_steps
