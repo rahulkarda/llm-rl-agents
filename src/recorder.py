@@ -129,3 +129,14 @@ class EpisodeRecorder:
             List of transitions for which predicate returns True.
         """
         return [t for t in self._transitions if predicate(t)]
+
+    def filter_by_reward_threshold(self, min_reward: float) -> List[Dict[str, Any]]:
+        """
+        Return a list of transitions whose reward is >= min_reward.
+        Useful for extracting positive transitions or high-reward steps for analysis/demo.
+        Args:
+            min_reward: Minimum reward threshold (inclusive).
+        Returns:
+            List of transitions with reward >= min_reward.
+        """
+        return [t for t in self._transitions if t.get('reward', 0.0) >= min_reward]
