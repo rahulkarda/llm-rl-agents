@@ -25,6 +25,27 @@ pip install -r requirements.txt
 - Use `EpisodeRecorder` in `src/recorder.py` to log episode transitions and replay traces.
 - Tests for basic agent and recorder functionality are in `src/test_agent.py` and `src/test_recorder.py`.
 
+### Agent interface and extension
+
+Agents provide a unified interface for policy logic: observe the environment and emit an action.
+
+**Core usage:**
+```python
+from agent import RandomAgent, DeterministicAgent
+import gymnasium as gym
+
+env = gym.make('CartPole-v1')
+agent = RandomAgent(env.action_space)
+observation, _ = env.reset()
+action = agent.act(observation)
+# Use action in env.step(action)
+```
+
+**Extension notes:**
+- To make a new agent, subclass `Agent` and implement `act()`.
+- For LLM-based policies, override `act()` to prompt the model and parse the action.
+- `reset()` can be overridden to clear internal state between episodes.
+
 ### EpisodeRecorder workflow
 
 1. Instantiate an `EpisodeRecorder` (optionally with `out_path`):
