@@ -1,5 +1,7 @@
 import json
 from typing import Any, Dict, Optional, List, Callable
+import csv
+from utils import flatten_dict
 
 class EpisodeRecorder:
     """
@@ -120,16 +122,6 @@ class EpisodeRecorder:
             'actions': actions
         }
 
-    def filter_transitions(self, predicate: Callable[[Dict[str, Any]], bool]) -> List[Dict[str, Any]]:
-        """
-        Return a list of transitions matching a predicate function.
-        Args:
-            predicate: Callable taking a transition dict and returning True/False.
-        Returns:
-            List of transitions for which predicate returns True.
-        """
-        return [t for t in self._transitions if predicate(t)]
-
     def filter_by_reward_threshold(self, min_reward: float) -> List[Dict[str, Any]]:
         """
         Return a list of transitions whose reward is >= min_reward.
@@ -140,3 +132,47 @@ class EpisodeRecorder:
             List of transitions with reward >= min_reward.
         """
         return [t for t in self._transitions if t.get('reward', 0.0) >= min_reward]
+
+    def export_to_csv(self, path: Optional[str] = None):
+        """
+        Export episode transitions to a CSV file. Flattens nested info dicts for readable columns.
+        Args:
+            path: Optional file path to write CSV. If not specified, uses self.out_path with '.csv' extension.
+        """
+        target_path = path
+        if target_path is None:
+            if self.out_path:
+                if self.out_path.endswith('.jsonl'):
+                    target_path = self.out_path[:-6] + '.csv'
+                else:
+                    target_path = self.out_path + '.csv'
+            else:
+                raise ValueError("No output path specified for CSV export.")
+        rows = []
+        for t in self._transitions:
+            flat_t = {}
+            # observation as string (handle dict or str)
+            obs = t.get('observation')
+            if isinstance(obs, dict):
+                for k, v in flatten_dict(obs).items():
+                    flat_t[f'observation.{k}'] = v
+            else:
+                flat_t['observation'] = obs
+            flat_t['action'] = t.get('action')
+            flat_t['reward'] = t.get('reward')
+            # flatten info dict
+            info = t.get('info')
+            if info:
+                for k, v in flatten_dict(info).items():
+                    flat_t[f'info.{k}'] = v
+            rows.append(flat_t)
+        # Collect all unique field names
+        fieldnames = set()
+        for r in rows:
+            fieldnames.update(r.keys())
+        fieldnames = sorted(fieldnames)
+        with open(target_path, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(row)
