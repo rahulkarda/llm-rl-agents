@@ -66,8 +66,15 @@ class RandomAgent(Agent):
 class DeterministicAgent(Agent):
     """
     Agent that always returns a fixed action, or defaults to the lowest-valued action for the space.
-    For discrete action spaces, returns fixed_action if provided, else index 0.
-    For continuous (Box) spaces, returns lowest value (action_space.low).
+    
+    Action selection:
+      - If fixed_action is specified: always return that.
+      - For Discrete action spaces: return fixed_action_index (default 0).
+      - For Box action spaces: return lowest value (action_space.low).
+      - Otherwise: NotImplementedError.
+    
+    For Discrete spaces, fixed_action_index (default 0) can be set via set_fixed_action_index().
+    For Box spaces, returns action_space.low.
     """
     def __init__(self, action_space, fixed_action=None):
         """
@@ -76,25 +83,31 @@ class DeterministicAgent(Agent):
             fixed_action: (optional) The action to always return. Must be contained in action_space.
         """
         self.action_space = action_space
-        if fixed_action is not None:
-            assert self.action_space.contains(fixed_action), "fixed_action not in action_space"
         self.fixed_action = fixed_action
         self.fixed_action_index = 0  # Default for Discrete
+        if fixed_action is not None:
+            assert self.action_space.contains(fixed_action), "fixed_action not in action_space"
 
     def act(self, observation: Any) -> Any:
         """
-        Return the fixed action if specified, otherwise:
-        - For Discrete: action index 0 (or set index)
-        - For Box: lowest value (action_space.low)
+        Return deterministic action based on agent setup and action space:
+            - If fixed_action is set: always return it.
+            - Else, for Discrete: return fixed_action_index (default 0).
+            - Else, for Box: return action_space.low.
+            - Else: raise NotImplementedError.
         """
         if self.fixed_action is not None:
             return self.fixed_action
-        # Discrete action space
+
+        # Discrete action space: has 'n' attribute
         if hasattr(self.action_space, 'n'):
-            # Return the set fixed_action_index or default to 0
-            return self.fixed_action_index
+            # Ensure index is in bounds
+            if 0 <= self.fixed_action_index < self.action_space.n:
+                return self.fixed_action_index
+            else:
+                raise ValueError(f"fixed_action_index {self.fixed_action_index} out of bounds for Discrete(n={self.action_space.n})")
+        # Box action space: has 'low' attribute
         elif hasattr(self.action_space, 'low'):
-            # Continuous Box space
             return self.action_space.low
         else:
             raise NotImplementedError("DeterministicAgent: unsupported action space type")
@@ -105,7 +118,10 @@ class DeterministicAgent(Agent):
         Args:
             idx: Integer index (must be in bounds for action_space.n)
         """
-        if hasattr(self.action_space, 'n') and 0 <= idx < self.action_space.n:
-            self.fixed_action_index = idx
+        if hasattr(self.action_space, 'n'):
+            if 0 <= idx < self.action_space.n:
+                self.fixed_action_index = idx
+            else:
+                raise ValueError(f"Index {idx} out of bounds for discrete action space of size {self.action_space.n}")
         else:
-            raise ValueError(f"Index {idx} out of bounds for discrete action space of size {getattr(self.action_space, 'n', None)}")
+            raise TypeError("set_fixed_action_index: action_space is not Discrete")
