@@ -18,7 +18,7 @@
 - [x] Simple negotiation env
 
 ## Phase 4: learning
-- [ ] In-context demonstration injection
+- [x] In-context demonstration injection
 - [ ] Self-reflection loop (trace -> critique -> retry)
 - [ ] Reject-sampling fine-tune scaffold
 

@@ -37,6 +37,7 @@ class EpisodeRecorder:
         self.out_path = out_path
         self._transitions: List[Dict[str, Any]] = []
         self.max_transitions = max_transitions
+        self._demonstrations: List[Dict[str, Any]] = []  # demonstration injection buffer
 
     @property
     def transitions(self) -> List[Dict[str, Any]]:
@@ -44,6 +45,13 @@ class EpisodeRecorder:
         Access the current episode transitions buffer (read-only).
         """
         return self._transitions
+
+    @property
+    def demonstrations(self) -> List[Dict[str, Any]]:
+        """
+        Access the current demonstration buffer (read-only).
+        """
+        return self._demonstrations
 
     def record_transition(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
         """
@@ -71,6 +79,30 @@ class EpisodeRecorder:
         Empty the transition buffer for the episode.
         """
         self._transitions = []
+
+    def clear_demonstrations(self):
+        """
+        Empty the demonstration buffer.
+        """
+        self._demonstrations = []
+
+    def inject_demonstration(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
+        """
+        Add a demonstration transition to the demonstration buffer.
+        Args:
+            observation: Example observation/state.
+            action: Example action.
+            reward: Example reward.
+            info: Optional info dict.
+        """
+        demo = {
+            "observation": observation,
+            "action": action,
+            "reward": reward
+        }
+        if info is not None:
+            demo["info"] = info
+        self._demonstrations.append(demo)
 
     def save_to_jsonl(self, path: Optional[str] = None):
         """
@@ -122,49 +154,36 @@ class EpisodeRecorder:
             'actions': actions
         }
 
-    def filter_by_reward_threshold(self, min_reward: float) -> List[Dict[str, Any]]:
+    def filter_transitions(self, filter_fn: Optional[Callable[[Dict[str, Any]], bool]] = None) -> List[Dict[str, Any]]:
         """
-        Return a list of transitions whose reward is >= min_reward.
-        Useful for extracting positive transitions or high-reward steps for analysis/demo.
+        Return filtered transitions matching filter_fn.
         Args:
-            min_reward: Minimum reward threshold (inclusive).
+            filter_fn: Callable taking transition dict, returns True/False.
         Returns:
-            List of transitions with reward >= min_reward.
+            List of transitions.
         """
-        return [t for t in self._transitions if t.get('reward', 0.0) >= min_reward]
+        if filter_fn is None:
+            return list(self._transitions)
+        return [t for t in self._transitions if filter_fn(t)]
 
-    def export_to_csv(self, path: Optional[str] = None):
+    def save_to_csv(self, path: Optional[str] = None):
         """
-        Export episode transitions to a CSV file. Flattens nested info dicts for readable columns.
+        Save buffered episode transitions to a CSV file (flattened fields).
         Args:
-            path: Optional file path to write CSV. If not specified, uses self.out_path with '.csv' extension.
+            path: Optional override path to save file.
         """
-        target_path = path
+        target_path = path or self.out_path
         if target_path is None:
-            if self.out_path:
-                if self.out_path.endswith('.jsonl'):
-                    target_path = self.out_path[:-6] + '.csv'
-                else:
-                    target_path = self.out_path + '.csv'
-            else:
-                raise ValueError("No output path specified for CSV export.")
+            raise ValueError("No output path specified for episode recorder.")
         rows = []
         for t in self._transitions:
             flat_t = {}
-            # observation as string (handle dict or str)
-            obs = t.get('observation')
-            if isinstance(obs, dict):
-                for k, v in flatten_dict(obs).items():
-                    flat_t[f'observation.{k}'] = v
-            else:
-                flat_t['observation'] = obs
-            flat_t['action'] = t.get('action')
-            flat_t['reward'] = t.get('reward')
-            # flatten info dict
-            info = t.get('info')
-            if info:
-                for k, v in flatten_dict(info).items():
-                    flat_t[f'info.{k}'] = v
+            for k, v in t.items():
+                if k != 'info':
+                    flat_t[k] = v
+                else:
+                    for k, v in t['info'].items():
+                        flat_t[f'info.{k}'] = v
             rows.append(flat_t)
         # Collect all unique field names
         fieldnames = set()
