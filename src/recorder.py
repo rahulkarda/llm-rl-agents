@@ -7,6 +7,7 @@ class EpisodeRecorder:
     """
     Stores episode transitions (observation, action, reward, info) for RL episodes.
     Supports saving transitions to JSONL for debugging/replay, loading episode traces, and computing summary statistics.
+    Self-reflection loop scaffold: critique_trace, retry_trace methods for agent learning.
 
     Workflow:
     - Use record_transition() after each env step to add (obs, action, reward, info) to buffer.
@@ -14,6 +15,8 @@ class EpisodeRecorder:
     - load_from_jsonl() loads transitions from JSONL file, replacing buffer (for replay/debug).
     - episode_summary() computes stats (length, reward, actions) from buffer.
     - clear() empties buffer between episodes.
+    - critique_trace() applies a critique_fn to episode trace, returns feedback.
+    - retry_trace() applies a retry_fn to episode trace + critique, returns new trace.
 
     Buffer behavior:
     - Buffer is capped by max_transitions (default 1500). Oldest transitions are dropped only when buffer length exceeds max_transitions, keeping the newest.
@@ -32,12 +35,15 @@ class EpisodeRecorder:
         - Transition buffer is capped by max_transitions (default 1500) for memory efficiency.
         - Transitions are dicts with keys: observation, action, reward, info (optional).
         - Supports filtering transitions for analysis/debugging.
+        - Self-reflection loop: critique and retry for learning.
     """
     def __init__(self, out_path: Optional[str] = None, max_transitions: Optional[int] = 1500):
         self.out_path = out_path
         self._transitions: List[Dict[str, Any]] = []
         self.max_transitions = max_transitions
         self._demonstrations: List[Dict[str, Any]] = []  # demonstration injection buffer
+        self._last_critique: Optional[Any] = None  # stores last critique feedback
+        self._last_retry_trace: Optional[List[Dict[str, Any]]] = None  # stores last retried trace
 
     @property
     def transitions(self) -> List[Dict[str, Any]]:
@@ -52,6 +58,20 @@ class EpisodeRecorder:
         Access the current demonstration buffer (read-only).
         """
         return self._demonstrations
+
+    @property
+    def last_critique(self) -> Optional[Any]:
+        """
+        Access the last critique feedback (read-only).
+        """
+        return self._last_critique
+
+    @property
+    def last_retry_trace(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Access the last retried trace (read-only).
+        """
+        return self._last_retry_trace
 
     def record_transition(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
         """
@@ -127,62 +147,63 @@ class EpisodeRecorder:
         source_path = path or self.out_path
         if source_path is None:
             raise ValueError("No input path specified for episode recorder.")
-        buffer: List[Dict[str, Any]] = []
+        transitions = []
         with open(source_path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line:
-                    buffer.append(json.loads(line))
-        if self.max_transitions is not None and len(buffer) > self.max_transitions:
-            buffer = buffer[-self.max_transitions:]
-        self._transitions = buffer
+                    try:
+                        transitions.append(json.loads(line))
+                    except Exception:
+                        continue
+        self._transitions = transitions
 
     def episode_summary(self) -> Dict[str, Any]:
         """
-        Compute summary statistics from the episode transitions.
+        Compute summary stats for the current episode.
         Returns:
-            dict with keys: 'length', 'total_reward', 'average_reward', 'actions'
+            dict with keys: length, total_reward, actions, unique_actions, reward_per_step
         """
         length = len(self._transitions)
-        total_reward = sum(t.get('reward', 0.0) for t in self._transitions)
-        average_reward = total_reward / length if length > 0 else 0.0
-        actions = [t.get('action') for t in self._transitions]
-        return {
-            'length': length,
-            'total_reward': total_reward,
-            'average_reward': average_reward,
-            'actions': actions
+        total_reward = sum(t.get("reward", 0) for t in self._transitions)
+        actions = [t.get("action") for t in self._transitions]
+        unique_actions = sorted(set(actions))
+        reward_per_step = [t.get("reward", 0) for t in self._transitions]
+        summary = {
+            "length": length,
+            "total_reward": total_reward,
+            "actions": actions,
+            "unique_actions": unique_actions,
+            "reward_per_step": reward_per_step,
         }
+        return summary
 
-    def filter_transitions(self, filter_fn: Optional[Callable[[Dict[str, Any]], bool]] = None) -> List[Dict[str, Any]]:
+    def filter_transitions(self, filter_fn: Callable[[Dict[str, Any]], bool]) -> List[Dict[str, Any]]:
         """
         Return filtered transitions matching filter_fn.
         Args:
-            filter_fn: Callable taking transition dict, returns True/False.
+            filter_fn: function that returns True for transitions to keep.
         Returns:
-            List of transitions.
+            List of matching transitions.
         """
-        if filter_fn is None:
-            return list(self._transitions)
         return [t for t in self._transitions if filter_fn(t)]
 
     def save_to_csv(self, path: Optional[str] = None):
         """
-        Save buffered episode transitions to a CSV file (flattened fields).
+        Save transitions to CSV file (flattened info fields).
         Args:
             path: Optional override path to save file.
         """
-        target_path = path or self.out_path
+        target_path = path or (self.out_path and self.out_path.replace('.jsonl', '.csv'))
         if target_path is None:
-            raise ValueError("No output path specified for episode recorder.")
+            raise ValueError("No output path specified for CSV export.")
         rows = []
         for t in self._transitions:
-            flat_t = {}
-            for k, v in t.items():
-                if k != 'info':
-                    flat_t[k] = v
-                else:
-                    for k, v in t['info'].items():
+            flat_t = {k: v for k, v in t.items() if k != "info"}
+            if "info" in t:
+                info = t["info"]
+                if isinstance(info, dict):
+                    for k, v in info.items():
                         flat_t[f'info.{k}'] = v
             rows.append(flat_t)
         # Collect all unique field names
@@ -195,3 +216,28 @@ class EpisodeRecorder:
             writer.writeheader()
             for row in rows:
                 writer.writerow(row)
+
+    # Self-reflection loop scaffold
+    def critique_trace(self, critique_fn: Callable[[List[Dict[str, Any]]], Any]) -> Any:
+        """
+        Apply a critique_fn to the current episode trace and store feedback.
+        Args:
+            critique_fn: function that takes episode trace (list of transitions) and returns critique feedback.
+        Returns:
+            Critique feedback (arbitrary type).
+        """
+        feedback = critique_fn(self._transitions)
+        self._last_critique = feedback
+        return feedback
+
+    def retry_trace(self, retry_fn: Callable[[List[Dict[str, Any]], Any], List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        """
+        Apply a retry_fn to the current episode trace and last critique feedback to produce a new trace.
+        Args:
+            retry_fn: function that takes episode trace and critique feedback, returns new episode trace (list of transitions).
+        Returns:
+            New episode trace (list of transitions).
+        """
+        new_trace = retry_fn(self._transitions, self._last_critique)
+        self._last_retry_trace = new_trace
+        return new_trace
