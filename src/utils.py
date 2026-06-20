@@ -118,30 +118,31 @@ def flatten_dict(d, parent_key='', sep='.'):
 
 def dict_to_str(d, indent=0):
     """
-    Pretty-print a (potentially nested) dict for human-readable logging.
-    Handles empty dict and non-dict values robustly.
+    Pretty-print a (potentially nested) dict for logging/debugging.
+    Each nested level is indented by 2 spaces. Returns a string.
+    Args:
+        d: dict or value to print
+        indent: current indentation level (int)
+    Returns:
+        str
     """
-    IND = '  '
+    spaces = '  ' * indent
     if not isinstance(d, dict):
-        return str(d)
-    if len(d) == 0:
-        return '{}'
+        return f"{spaces}{d}"
+    if not d:
+        return f"{spaces}{{}}"
     lines = []
     for k, v in d.items():
         if isinstance(v, dict):
-            nested = dict_to_str(v, indent=indent + 1)
-            lines.append(f"{IND * indent}{k}:")
-            for line in nested.split('\n'):
-                lines.append(f"{IND * (indent + 1)}{line}")
+            lines.append(f"{spaces}{k}:")
+            lines.append(dict_to_str(v, indent + 1))
         else:
-            lines.append(f"{IND * indent}{k}: {v}")
+            lines.append(f"{spaces}{k}: {v}")
     return '\n'.join(lines)
 
 
 def safe_json_parse(s):
-    """
-    Parse JSON string safely, returning None on error.
-    """
+    """Parse a JSON string robustly, returning None on failure."""
     try:
         return json.loads(s)
     except Exception:
@@ -149,80 +150,66 @@ def safe_json_parse(s):
 
 
 def get_env_name(env):
-    """
-    Extract env name from gym env or spec.
-    """
-    if hasattr(env, 'spec') and env.spec is not None:
-        return env.spec.id
-    if hasattr(env, 'unwrapped') and hasattr(env.unwrapped, 'spec') and env.unwrapped.spec is not None:
-        return env.unwrapped.spec.id
-    return type(env).__name__
+    """Extract environment name from gym env or spec."""
+    try:
+        if hasattr(env, 'spec') and env.spec is not None:
+            return env.spec.id
+        if hasattr(env, 'unwrapped') and hasattr(env.unwrapped, 'spec') and env.unwrapped.spec is not None:
+            return env.unwrapped.spec.id
+    except Exception:
+        pass
+    return str(type(env))
 
 
 def is_discrete_space(space):
-    """
-    Return True if gym space is Discrete, False otherwise.
-    """
-    from gymnasium.spaces import Discrete
-    return isinstance(space, Discrete)
+    """Check if a gym action space is discrete."""
+    return hasattr(space, 'n')
 
 
 def hash_dict(d):
-    """
-    Return a stable hash for a dict (for caching/debugging).
-    """
+    """Produce a stable integer hash for a dict."""
     s = json.dumps(d, sort_keys=True, default=str)
-    return int(hashlib.md5(s.encode('utf-8')).hexdigest()[:12], 16)
+    return int(hashlib.md5(s.encode('utf-8')).hexdigest(), 16)
 
 
 def deep_copy_dict(d):
-    """
-    Return a deep copy of a dict.
-    """
+    """Deep copy a dict for safe mutation."""
     return copy.deepcopy(d)
 
 
 def pad_list(lst, target_len, pad_value=None):
-    """
-    Pad or truncate a list to target_len.
-    """
-    if len(lst) > target_len:
+    """Pad or truncate a list to target_len."""
+    if len(lst) >= target_len:
         return lst[:target_len]
-    elif len(lst) < target_len:
-        return lst + [pad_value] * (target_len - len(lst))
-    else:
-        return lst
+    return lst + [pad_value] * (target_len - len(lst))
 
 
 def dict_diff(d1, d2):
-    """
-    Compute diff between two dicts: added, removed, changed keys.
-    """
-    added = {k: v for k, v in d2.items() if k not in d1}
-    removed = {k: v for k, v in d1.items() if k not in d2}
+    """Compute difference between two dicts: added, removed, changed keys."""
+    added = {k: d2[k] for k in d2 if k not in d1}
+    removed = {k: d1[k] for k in d1 if k not in d2}
     changed = {k: (d1[k], d2[k]) for k in d1 if k in d2 and d1[k] != d2[k]}
     return {'added': added, 'removed': removed, 'changed': changed}
 
 
 def filter_dict(d, keys):
-    """
-    Return new dict containing only specified keys from input dict.
-    """
+    """Return new dict with only specified keys from d."""
     return {k: d[k] for k in keys if k in d}
 
 
-def partition_dict(d, left_keys):
+def partition_dict(d, keys):
     """
-    Split dict into two dicts: left (with left_keys), right (remaining keys).
+    Partition dict d into two dicts: those with keys in keys, and those without.
+    Returns (included, excluded).
     """
-    left = {k: d[k] for k in left_keys if k in d}
-    right = {k: d[k] for k in d if k not in left_keys}
-    return left, right
+    included = {k: d[k] for k in keys if k in d}
+    excluded = {k: v for k, v in d.items() if k not in keys}
+    return included, excluded
 
 
 def deep_merge_dicts(d1, d2):
     """
-    Recursively merge two nested dicts. Values from d2 overwrite d1.
+    Recursively merge two dicts. Values from d2 overwrite d1.
     For nested dicts, merge recursively. Does not mutate inputs.
     Args:
         d1: dict (base)
