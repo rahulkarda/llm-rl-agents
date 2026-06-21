@@ -20,7 +20,7 @@
 ## Phase 4: learning
 - [x] In-context demonstration injection
 - [x] Self-reflection loop (trace -> critique -> retry)
-- [ ] Reject-sampling fine-tune scaffold
+- [x] Reject-sampling fine-tune scaffold
 
 ## Phase 5: eval
 - [ ] Win-rate vs. baselines
