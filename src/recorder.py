@@ -11,14 +11,22 @@ class EpisodeRecorder:
     Reject-sampling fine-tune scaffold: reject_sample_for_finetune method stub for learning integration.
 
     Workflow:
-    - Use record_transition() after each env step to add (obs, action, reward, info) to buffer.
-    - save_to_jsonl() writes current buffer to JSONL file for persistent replay or analysis.
-    - load_from_jsonl() loads transitions from JSONL file, replacing buffer (for replay/debug).
-    - episode_summary() computes stats (length, reward, actions) from buffer.
-    - clear() empties buffer between episodes.
-    - critique_trace() applies a critique_fn to episode trace, returns feedback.
-    - retry_trace() applies a retry_fn to episode trace + critique, returns new trace.
-    - reject_sample_for_finetune() performs reject-sampling selection for fine-tuning (scaffold).
+    1. Instantiate an EpisodeRecorder (optionally with out_path):
+        recorder = EpisodeRecorder(out_path="episode.jsonl")
+    2. After each environment step, record the transition:
+        recorder.record_transition(observation, action, reward, info)
+    3. Save episode to JSONL for later replay or analysis:
+        recorder.save_to_jsonl()  # Uses out_path
+    4. Load and replay an episode:
+        recorder.load_from_jsonl("episode.jsonl")
+        for t in recorder.transitions:
+            print(t)
+    5. Compute summary statistics:
+        summary = recorder.episode_summary()
+        print(summary)
+    6. Optionally, select transitions for fine-tuning:
+        samples = recorder.reject_sample_for_finetune(threshold=0.8)
+    7. Use critique_trace and retry_trace for self-reflection learning loop (scaffold).
 
     Buffer behavior:
     - Buffer is capped by max_transitions (default 1500). Oldest transitions are dropped only when buffer length exceeds max_transitions, keeping the newest.
@@ -112,113 +120,97 @@ class EpisodeRecorder:
 
     def inject_demonstration(self, observation: Any, action: Any, reward: float, info: Optional[Dict[str, Any]] = None):
         """
-        Add a demonstration transition to the demonstration buffer.
-        Args:
-            observation: Example observation/state.
-            action: Example action.
-            reward: Example reward.
-            info: Optional info dict.
+        Add a demonstration transition to the demonstration buffer for in-context learning.
         """
-        demo = {
+        transition = {
             "observation": observation,
             "action": action,
             "reward": reward
         }
         if info is not None:
-            demo["info"] = info
-        self._demonstrations.append(demo)
+            transition["info"] = info
+        self._demonstrations.append(transition)
 
     def save_to_jsonl(self, out_path: Optional[str] = None):
         """
-        Save episode transitions to JSONL file.
+        Persist current episode transitions to JSONL file.
         Args:
-            out_path: Optional override for file path.
+            out_path: Optional override path. Uses self.out_path if not provided.
         """
         path = out_path or self.out_path
-        if not path:
-            raise ValueError("No out_path specified for JSONL export.")
-        with open(path, "w", encoding="utf-8") as f:
+        assert path is not None, "No output path provided for JSONL save."
+        with open(path, "w") as f:
             for t in self._transitions:
-                f.write(json.dumps(t, ensure_ascii=False) + "\n")
+                f.write(json.dumps(t) + "\n")
 
     def load_from_jsonl(self, in_path: Optional[str] = None):
         """
-        Load episode transitions from JSONL file, replacing current buffer.
+        Load episode transitions from a JSONL file, replacing current buffer.
         Args:
-            in_path: Optional override for file path.
+            in_path: Optional override path. Uses self.out_path if not provided.
         """
         path = in_path or self.out_path
-        if not path:
-            raise ValueError("No in_path specified for JSONL import.")
-        self._transitions = []
-        with open(path, "r", encoding="utf-8") as f:
+        assert path is not None, "No input path provided for JSONL load."
+        transitions = []
+        with open(path, "r") as f:
             for line in f:
-                t = json.loads(line)
-                self._transitions.append(t)
+                transitions.append(json.loads(line.strip()))
+        self._transitions = transitions
 
     def episode_summary(self) -> Dict[str, Any]:
         """
-        Compute summary statistics for the current episode transitions.
+        Compute summary statistics for current episode trace.
         Returns:
-            Dict with keys: length, total_reward, actions (list), info (flattened dict), etc.
+            Dict with keys: length, total_reward, actions, reward_per_step
         """
         length = len(self._transitions)
         total_reward = sum(t["reward"] for t in self._transitions)
         actions = [t["action"] for t in self._transitions]
-        obs_first = self._transitions[0]["observation"] if self._transitions else None
-        obs_last = self._transitions[-1]["observation"] if self._transitions else None
-        info_flat = flatten_dict(self._transitions[-1]["info"]) if self._transitions and "info" in self._transitions[-1] else {}
+        reward_per_step = [t["reward"] for t in self._transitions]
         return {
             "length": length,
             "total_reward": total_reward,
             "actions": actions,
-            "observation_first": obs_first,
-            "observation_last": obs_last,
-            "info_last_flat": info_flat,
+            "reward_per_step": reward_per_step
         }
 
-    def filter_transitions(self, filter_fn: Callable[[Dict[str, Any]], bool]) -> List[Dict[str, Any]]:
+    def export_to_csv(self, csv_path: str):
         """
-        Return a filtered list of transitions matching filter_fn.
-        Args:
-            filter_fn: function that takes a transition dict, returns True/False.
-        Returns:
-            List of transitions passing filter_fn.
-        """
-        return [t for t in self._transitions if filter_fn(t)]
-
-    def record_episode_csv(self, csv_path: str):
-        """
-        Save episode transitions to CSV for easy viewing.
-        Args:
-            csv_path: file path for CSV export.
+        Export episode transitions to CSV for external analysis.
+        Each row is a flattened dict.
         """
         if not self._transitions:
             return
-        fieldnames = list(self._transitions[0].keys())
-        with open(csv_path, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+        keys = set()
+        flat_transitions = []
+        for t in self._transitions:
+            flat = flatten_dict(t)
+            flat_transitions.append(flat)
+            keys.update(flat.keys())
+        keys = sorted(keys)
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=keys)
             writer.writeheader()
-            for t in self._transitions:
-                writer.writerow(t)
+            for t in flat_transitions:
+                writer.writerow({k: t.get(k, "") for k in keys})
 
-    def filter_by_reward_threshold(self, threshold: float) -> List[Dict[str, Any]]:
+    def filter_transitions(self, filter_fn: Callable[[Dict[str, Any]], bool]) -> List[Dict[str, Any]]:
         """
-        Return transitions with reward >= threshold.
+        Return transitions satisfying filter_fn.
         Args:
-            threshold: float reward threshold
+            filter_fn: Callable that takes a transition dict and returns True/False.
         Returns:
             List of transitions.
         """
-        return [t for t in self._transitions if t["reward"] >= threshold]
+        return [t for t in self._transitions if filter_fn(t)]
 
     def critique_trace(self, critique_fn: Callable[[List[Dict[str, Any]]], Any]) -> Any:
         """
-        Apply a critique_fn to the current episode trace, returning feedback.
+        Apply a critique function to the episode trace for self-reflection.
         Args:
-            critique_fn: function that takes episode trace (list of transitions), returns feedback.
+            critique_fn: Callable taking episode trace (list of transitions), returns feedback.
         Returns:
-            Critique feedback (arbitrary type).
+            Feedback object (arbitrary type).
         """
         feedback = critique_fn(self._transitions)
         self._last_critique = feedback
@@ -226,9 +218,9 @@ class EpisodeRecorder:
 
     def retry_trace(self, retry_fn: Callable[[List[Dict[str, Any]], Any], List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         """
-        Apply a retry_fn to the current episode trace and last critique feedback to produce a new trace.
+        Retry episode trace given critique feedback.
         Args:
-            retry_fn: function that takes episode trace and critique feedback, returns new episode trace (list of transitions).
+            retry_fn: Callable taking episode trace and critique, returns new trace.
         Returns:
             New episode trace (list of transitions).
         """
