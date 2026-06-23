@@ -23,6 +23,6 @@
 - [x] Reject-sampling fine-tune scaffold
 
 ## Phase 5: eval
-- [ ] Win-rate vs. baselines
+- [x] Win-rate vs. baselines
 - [ ] Cost-per-episode tracking
 - [ ] Side-by-side trace comparison
