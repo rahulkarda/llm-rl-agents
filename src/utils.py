@@ -15,6 +15,7 @@ Functions:
 - partition_dict: Split a dict into two dicts based on a set of keys (added).
 - deep_merge_dicts: Recursively merge two nested dicts (added).
 - list_chunk: Split a list into chunks of given size (added).
+- compute_episode_cost: Compute total episode cost from trace (added).
 
 Typical scenarios:
 - Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
@@ -27,6 +28,7 @@ Typical scenarios:
 - Dict splitting: Use partition_dict to separate fields for agent vs env, or for logging selective info.
 - Deep dict merging: Use deep_merge_dicts to combine nested dicts for config, info, or state overlays (added).
 - Sequence batching: Use list_chunk to break lists into fixed-size batches for processing or logging (added).
+- Episode cost tracking: Use compute_episode_cost to sum API or action costs for an episode trace (added).
 
 Usage examples:
     # Flatten a nested dict
@@ -99,6 +101,15 @@ Usage examples:
     chunks = list(list_chunk(x, 2))
     # chunks: [[1,2],[3,4],[5,6]]
 
+    # Compute episode cost
+    transitions = [
+        {"cost": 0.01, "info": {"api_cost": 0.02}},
+        {"info": {"api_cost": 0.03}},
+        {"cost": 0.04}
+    ]
+    total = compute_episode_cost(transitions)
+    # total: 0.1
+
 Notes:
 - flatten_dict is useful for flattening nested info dicts for logging or CSV export.
 - dict_to_str helps with readable debug output, especially for deeply nested transitions.
@@ -110,54 +121,45 @@ Notes:
 - partition_dict is useful for separating agent-related vs env-related fields or logging selective info.
 - deep_merge_dicts is useful for merging config overlays or combining nested info dicts.
 - list_chunk is useful for batching or splitting long lists for processing or logging.
+- compute_episode_cost is useful for tracking episode API/action costs for eval and analysis.
 """
 import json
 import copy
-import hashlib
 
-def flatten_dict(d, parent_key='', sep='.'): 
-    """Flatten a nested dictionary, joining keys with sep."""
-    items = []
+
+def flatten_dict(d, parent_key='', sep='.'):
+    """
+    Flatten a nested dict using dotted keys.
+    Returns flat dict.
+    """
+    items = {}
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
         if isinstance(v, dict):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
+            items.update(flatten_dict(v, new_key, sep=sep))
         else:
-            items.append((new_key, v))
-    return dict(items)
+            items[new_key] = v
+    return items
 
 
 def dict_to_str(d, indent=0):
     """
-    Pretty-print a (potentially nested) dict for debug/logging.
-    Args:
-        d: dict (possibly nested)
-        indent: int (current indentation)
-    Returns:
-        str: multi-line formatted string
+    Pretty-print a (possibly nested) dict.
+    Returns string.
     """
-    if not isinstance(d, dict):
-        return str(d)
-    if len(d) == 0:
-        return '{}'
-    out = []
+    lines = []
     for k, v in d.items():
-        prefix = '  ' * indent
         if isinstance(v, dict):
-            out.append(f"{prefix}{k}:")
-            out.append(dict_to_str(v, indent=indent+1))
+            lines.append(' ' * indent + f"{k}:")
+            lines.append(dict_to_str(v, indent + 2))
         else:
-            out.append(f"{prefix}{k}: {v}")
-    return '\n'.join(out)
+            lines.append(' ' * indent + f"{k}: {v}")
+    return '\n'.join(lines)
 
 
 def safe_json_parse(s):
     """
     Robustly parse JSON string, returning None on failure.
-    Args:
-        s: str
-    Returns:
-        dict or list or None
     """
     try:
         return json.loads(s)
@@ -168,77 +170,50 @@ def safe_json_parse(s):
 def get_env_name(env):
     """
     Extract environment name from gym env or spec.
-    Args:
-        env: gym env or env.spec
-    Returns:
-        str name
     """
     if hasattr(env, 'spec') and env.spec is not None:
         return env.spec.id
-    elif hasattr(env, 'unwrapped') and hasattr(env.unwrapped, 'spec'):
+    elif hasattr(env, 'unwrapped') and hasattr(env.unwrapped, 'spec') and env.unwrapped.spec is not None:
         return env.unwrapped.spec.id
-    elif hasattr(env, 'id'):
-        return env.id
-    return 'unknown-env'
+    else:
+        return str(type(env))
 
 
 def is_discrete_space(space):
     """
     Check if gym action space is discrete.
-    Args:
-        space: gymnasium.Space
-    Returns:
-        bool
     """
     return hasattr(space, 'n')
 
 
 def hash_dict(d):
     """
-    Produce a stable hash for a dict (for caching/debugging).
-    Args:
-        d: dict
-    Returns:
-        int hash
+    Produce a stable hash for a dict.
     """
-    s = json.dumps(d, sort_keys=True, separators=(',', ':'))
-    return int(hashlib.sha256(s.encode('utf-8')).hexdigest()[:16], 16)
+    return hash(json.dumps(d, sort_keys=True, default=str))
 
 
 def deep_copy_dict(d):
     """
-    Return a deep copy of a dict (for safe mutation).
-    Args:
-        d: dict
-    Returns:
-        dict (deep copy)
+    Return a deep copy of a dict.
     """
     return copy.deepcopy(d)
 
 
-def pad_list(lst, target_len, pad_value=None):
+def pad_list(lst, length, pad_value=None):
     """
-    Pad or truncate a list to target_len.
-    Args:
-        lst: list
-        target_len: int
-        pad_value: value for padding (default None)
-    Returns:
-        new list
+    Pad or truncate a list to target length.
     """
-    if len(lst) > target_len:
-        return lst[:target_len]
-    return lst + [pad_value] * (target_len - len(lst))
+    if len(lst) >= length:
+        return lst[:length]
+    else:
+        return lst + [pad_value] * (length - len(lst))
 
 
 def dict_diff(d1, d2):
     """
-    Compute dict difference: added, removed, changed keys.
-    Args:
-        d1: dict
-        d2: dict
-    Returns:
-        dict with keys: 'added', 'removed', 'changed'
+    Compute difference between two dicts.
+    Returns dict with 'added', 'removed', 'changed'.
     """
     added = {k: d2[k] for k in d2 if k not in d1}
     removed = {k: d1[k] for k in d1 if k not in d2}
@@ -248,40 +223,25 @@ def dict_diff(d1, d2):
 
 def filter_dict(d, keys):
     """
-    Return new dict containing only specified keys from d.
-    Args:
-        d: dict
-        keys: iterable of keys
-    Returns:
-        dict
+    Return new dict containing only specified keys.
     """
     return {k: d[k] for k in keys if k in d}
 
 
 def partition_dict(d, keys):
     """
-    Split a dict into two dicts: left contains keys in 'keys', right the rest.
-    Args:
-        d: dict
-        keys: iterable of keys
-    Returns:
-        (left, right)
+    Split dict into two dicts based on key set.
+    Returns (left, right).
     """
-    keys_set = set(keys)
-    left = {k: v for k, v in d.items() if k in keys_set}
-    right = {k: v for k, v in d.items() if k not in keys_set}
+    left = {k: d[k] for k in keys if k in d}
+    right = {k: d[k] for k in d if k not in keys}
     return left, right
 
 
 def deep_merge_dicts(d1, d2):
     """
-    Recursively merge two nested dicts. Values from d2 overwrite d1.
-    For nested dicts, merge recursively. Does not mutate inputs.
-    Args:
-        d1: dict (base)
-        d2: dict (overlay)
-    Returns:
-        dict (merged)
+    Recursively merge two nested dicts.
+    d2 values overwrite d1.
     """
     result = deep_copy_dict(d1)
     for k, v in d2.items():
@@ -303,3 +263,25 @@ def list_chunk(lst, chunk_size):
     """
     for i in range(0, len(lst), chunk_size):
         yield lst[i:i + chunk_size]
+
+
+def compute_episode_cost(transitions, cost_keys=("cost", "api_cost")):
+    """
+    Compute total episode cost from a list of transition dicts.
+    Sums any found numeric values under top-level 'cost' or nested 'info'['api_cost'].
+    Args:
+        transitions: list of dicts (e.g. episode trace)
+        cost_keys: tuple of keys to look for (default: ("cost", "api_cost"))
+    Returns:
+        float total cost (sum)
+    """
+    total = 0.0
+    for t in transitions:
+        for key in cost_keys:
+            # Top-level
+            if key in t and isinstance(t[key], (int, float)):
+                total += t[key]
+            # Nested under 'info'
+            if "info" in t and isinstance(t["info"], dict) and key in t["info"] and isinstance(t["info"][key], (int, float)):
+                total += t["info"][key]
+    return total
