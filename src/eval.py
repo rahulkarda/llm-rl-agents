@@ -1,5 +1,6 @@
 import gymnasium as gym
 from agent import RandomAgent
+from utils import compute_episode_cost
 
 def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=None):
     """
@@ -49,9 +50,55 @@ def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=No
         "episodes": episodes,
     }
 
+def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "api_cost")):
+    """
+    Evaluate agent cost per episode for episodes on env_fn.
+    Args:
+        agent: Agent instance.
+        env_fn: Callable that returns a new env instance.
+        episodes: Number of episodes.
+        cost_keys: Tuple of keys to look for in transition dicts (top-level or under 'info').
+    Returns:
+        dict with keys: 'avg_cost', 'episode_costs', 'episodes'
+    """
+    episode_costs = []
+    for ep in range(episodes):
+        env = env_fn()
+        obs, _ = env.reset()
+        done = False
+        transitions = []
+        agent.reset()
+        while not done:
+            action = agent.act(obs)
+            obs2, reward, done, truncated, info = env.step(action)
+            transition = {
+                "observation": obs,
+                "action": action,
+                "reward": reward,
+                "info": info,
+            }
+            # Optionally propagate cost if present in info or elsewhere
+            for key in cost_keys:
+                if key in info and isinstance(info[key], (int, float)):
+                    transition[key] = info[key]
+            transitions.append(transition)
+            obs = obs2
+        total_cost = compute_episode_cost(transitions, cost_keys=cost_keys)
+        episode_costs.append(total_cost)
+        env.close()
+    avg_cost = sum(episode_costs) / len(episode_costs) if episode_costs else 0.0
+    return {
+        "avg_cost": avg_cost,
+        "episode_costs": episode_costs,
+        "episodes": episodes,
+    }
+
 if __name__ == "__main__":
     # Simple test: RandomAgent vs itself on CartPole
     env_fn = lambda: gym.make('CartPole-v1')
     agent = RandomAgent(env_fn().action_space)
     stats = evaluate_win_rate(agent, env_fn, episodes=10)
     print("Agent win rate:", stats["agent_win_rate"], "Wins:", stats["agent_wins"], "/", stats["episodes"])
+    # Test cost-per-episode (CartPole does not have cost info, so all zero)
+    cost_stats = evaluate_cost_per_episode(agent, env_fn, episodes=5)
+    print("Average episode cost:", cost_stats["avg_cost"], "Episode costs:", cost_stats["episode_costs"])
