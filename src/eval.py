@@ -1,3 +1,31 @@
+"""
+Evaluation utilities for RL agents: win-rate and cost tracking.
+
+Functions:
+- evaluate_win_rate(agent, env_fn, episodes, baseline, win_criteria): Evaluate agent vs baseline win-rate on an env, using custom win criteria.
+- evaluate_cost_per_episode(agent, env_fn, episodes, cost_keys): Track average and per-episode cost (e.g., API usage) from episode traces.
+
+Workflow:
+- Provide agent and env factory (env_fn: lambda returning env instance).
+- Optionally provide baseline agent and win_criteria (function taking info dict, returns bool).
+- For cost tracking, agent must propagate cost fields in info dicts during episode.
+
+Example usage:
+    import gymnasium as gym
+    from agent import RandomAgent
+    env_fn = lambda: gym.make('CartPole-v1')
+    agent = RandomAgent(env_fn().action_space)
+    stats = evaluate_win_rate(agent, env_fn, episodes=10)
+    print("Agent win rate:", stats["agent_win_rate"])
+    cost_stats = evaluate_cost_per_episode(agent, env_fn, episodes=5)
+    print("Average episode cost:", cost_stats["avg_cost"])
+
+Notes:
+- evaluate_win_rate alternates agent and baseline (if provided), else always agent.
+- win_criteria defaults to total_reward > 0.99 unless provided.
+- evaluate_cost_per_episode expects cost keys (default ("cost", "api_cost")) in info dicts.
+- Both functions return dicts with summary stats for downstream analysis.
+"""
 import gymnasium as gym
 from agent import RandomAgent
 from utils import compute_episode_cost
