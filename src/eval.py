@@ -57,6 +57,7 @@ def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=No
             action = current_agent.act(obs)
             obs, reward, done, truncated, info = env.step(action)
             total_reward += reward
+            done = done or truncated  # fix: episode ends if either is True
         # Determine win
         if win_criteria:
             won = win_criteria(info)
@@ -99,6 +100,7 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
         while not done:
             action = agent.act(obs)
             obs2, reward, done, truncated, info = env.step(action)
+            done = done or truncated  # fix: episode ends if either is True
             transition = {
                 "observation": obs,
                 "action": action,
