@@ -29,7 +29,11 @@ class Agent(ABC):
     
     An agent observes the environment state and emits an action.
     Subclasses must implement 'act'.
+    Provides step count tracking for episode progress.
     """
+    def __init__(self):
+        self.step_count = 0  # Tracks number of steps in current episode
+
     @abstractmethod
     def act(self, observation: Any) -> Any:
         """
@@ -44,8 +48,16 @@ class Agent(ABC):
     def reset(self) -> None:
         """
         Called at the start of each episode. Override if internal state needs clearing.
+        Resets step count.
         """
-        pass
+        self.step_count = 0
+
+    def step(self):
+        """
+        Call this method after each act() to increment step count.
+        Agents can use step_count for episode progress awareness.
+        """
+        self.step_count += 1
 
 
 class RandomAgent(Agent):
@@ -54,6 +66,7 @@ class RandomAgent(Agent):
     Useful as a baseline for comparison.
     """
     def __init__(self, action_space):
+        super().__init__()
         self.action_space = action_space
 
     def act(self, observation: Any) -> Any:
@@ -82,6 +95,7 @@ class DeterministicAgent(Agent):
             action_space: The environment's action space.
             fixed_action: (optional) The action to always return. Must be contained in action_space.
         """
+        super().__init__()
         self.action_space = action_space
         self.fixed_action = fixed_action
         self.fixed_action_index = 0  # Default for Discrete
