@@ -52,7 +52,7 @@ def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=No
         info = {}
         # Use agent for even, baseline for odd episodes
         current_agent = agent if (baseline is None or ep % 2 == 0) else baseline
-        current_agent.reset()
+        current_agent.reset()  # Ensure agent state is reset before episode
         while not done:
             action = current_agent.act(obs)
             obs, reward, done, truncated, info = env.step(action)
@@ -96,7 +96,7 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
         obs, _ = env.reset()
         done = False
         transitions = []
-        agent.reset()
+        agent.reset()  # Ensure agent state is reset before episode
         while not done:
             action = agent.act(obs)
             obs2, reward, done, truncated, info = env.step(action)
