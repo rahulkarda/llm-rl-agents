@@ -10,6 +10,26 @@ class SimpleGridWorldEnv(gym.Env):
     Actions: ["north", "south", "east", "west"]
     Rewards: +1 for reaching goal, 0 otherwise.
     Episode ends when goal is reached or max_steps is exceeded.
+
+    Usage example:
+        import gymnasium as gym
+        from grid_env import SimpleGridWorldEnv
+        env = SimpleGridWorldEnv(grid_size=5, max_steps=20)
+        obs, _ = env.reset()
+        done = False
+        while not done:
+            action = env.action_space.sample()
+            obs, reward, done, truncated, info = env.step(action)
+            env.render()
+            print("Reward:", reward, "Info:", info)
+
+    Design notes:
+    - Action space: gymnasium.spaces.Discrete(4) with semantic mapping (0: north, 1: south, 2: east, 3: west).
+    - Observation space: gymnasium.spaces.Text(), emits string description (position, goal status).
+    - State: agent_pos and goal_pos are [row, col] indices; agent starts and goal are randomly placed (never same cell).
+    - Rewards: +1 for reaching goal, 0 otherwise; episode ends on goal or max_steps.
+    - Info dict: includes agent_pos, goal_pos, step count, last_action string, and moved flag.
+    - Rendering: ASCII grid with 'A' for agent, 'G' for goal, '.' for empty.
     """
     def __init__(self, grid_size=7, max_steps=50):
         super().__init__()
