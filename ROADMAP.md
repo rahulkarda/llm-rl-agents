@@ -25,4 +25,4 @@
 ## Phase 5: eval
 - [x] Win-rate vs. baselines
 - [x] Cost-per-episode tracking
-- [ ] Side-by-side trace comparison
+- [x] Side-by-side trace comparison

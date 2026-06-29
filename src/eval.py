@@ -4,11 +4,13 @@ Evaluation utilities for RL agents: win-rate and cost tracking.
 Functions:
 - evaluate_win_rate(agent, env_fn, episodes, baseline, win_criteria): Evaluate agent vs baseline win-rate on an env, using custom win criteria.
 - evaluate_cost_per_episode(agent, env_fn, episodes, cost_keys): Track average and per-episode cost (e.g., API usage) from episode traces.
+- compare_traces_side_by_side(trace_a, trace_b, keys=None): Compare two episode traces step-wise, showing differences for selected keys.
 
 Workflow:
 - Provide agent and env factory (env_fn: lambda returning env instance).
 - Optionally provide baseline agent and win_criteria (function taking info dict, returns bool).
 - For cost tracking, agent must propagate cost fields in info dicts during episode.
+- For trace comparison, provide two traces (lists of transition dicts).
 
 Example usage:
     import gymnasium as gym
@@ -19,16 +21,22 @@ Example usage:
     print("Agent win rate:", stats["agent_win_rate"])
     cost_stats = evaluate_cost_per_episode(agent, env_fn, episodes=5)
     print("Average episode cost:", cost_stats["avg_cost"])
+    # Compare two traces
+    trace_a = [{"observation": "a", "action": 1, "reward": 0.5}]
+    trace_b = [{"observation": "b", "action": 2, "reward": 0.7}]
+    comparison = compare_traces_side_by_side(trace_a, trace_b)
+    print(comparison)
 
 Notes:
 - evaluate_win_rate alternates agent and baseline (if provided), else always agent.
 - win_criteria defaults to total_reward > 0.99 unless provided.
 - evaluate_cost_per_episode expects cost keys (default ("cost", "api_cost")) in info dicts.
 - Both functions return dicts with summary stats for downstream analysis.
+- compare_traces_side_by_side returns a list of dicts, each showing step-wise comparison for supplied keys.
 """
 import gymnasium as gym
 from agent import RandomAgent
-from utils import compute_episode_cost
+from utils import compute_episode_cost, flatten_dict_keys, dict_values_to_list
 
 def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=None):
     """
@@ -123,6 +131,45 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
         "episodes": episodes,
     }
 
+def compare_traces_side_by_side(trace_a, trace_b, keys=None):
+    """
+    Compare two episode traces side-by-side step-wise.
+    Args:
+        trace_a: List of transition dicts (episode A).
+        trace_b: List of transition dicts (episode B).
+        keys: List of keys to compare (default: intersection of flat keys in both traces).
+    Returns:
+        List of dicts for each step: {'step': i, 'a': {...}, 'b': {...}, 'diff': {...}}
+    """
+    max_len = max(len(trace_a), len(trace_b))
+    # Determine keys to compare
+    if keys is None:
+        keys_a = set(flatten_dict_keys(trace_a[0])) if trace_a else set()
+        keys_b = set(flatten_dict_keys(trace_b[0])) if trace_b else set()
+        keys = sorted(list(keys_a & keys_b)) if keys_a and keys_b else None
+    comparison = []
+    for i in range(max_len):
+        ta = trace_a[i] if i < len(trace_a) else {}
+        tb = trace_b[i] if i < len(trace_b) else {}
+        # Extract values for keys
+        if keys:
+            vals_a = {k: ta.get(k, None) for k in keys}
+            vals_b = {k: tb.get(k, None) for k in keys}
+        else:
+            # Use all keys
+            all_keys = sorted(set(ta.keys()) | set(tb.keys()))
+            vals_a = {k: ta.get(k, None) for k in all_keys}
+            vals_b = {k: tb.get(k, None) for k in all_keys}
+        # Diff: show keys where values differ
+        diff = {k: (vals_a[k], vals_b[k]) for k in vals_a if vals_a[k] != vals_b[k]}
+        comparison.append({
+            'step': i,
+            'a': vals_a,
+            'b': vals_b,
+            'diff': diff,
+        })
+    return comparison
+
 if __name__ == "__main__":
     # Simple test: RandomAgent vs itself on CartPole
     env_fn = lambda: gym.make('CartPole-v1')
@@ -132,3 +179,18 @@ if __name__ == "__main__":
     # Test cost-per-episode (CartPole does not have cost info, so all zero)
     cost_stats = evaluate_cost_per_episode(agent, env_fn, episodes=5)
     print("Average episode cost:", cost_stats["avg_cost"], "Episode costs:", cost_stats["episode_costs"])
+    # Trace comparison example
+    trace_a = [
+        {"observation": "state1", "action": 0, "reward": 1.0},
+        {"observation": "state2", "action": 1, "reward": 0.0},
+    ]
+    trace_b = [
+        {"observation": "state1", "action": 0, "reward": 0.5},
+        {"observation": "state2", "action": 2, "reward": 1.0},
+    ]
+    comparison = compare_traces_side_by_side(trace_a, trace_b, keys=["observation", "action", "reward"])
+    for step_cmp in comparison:
+        print(f"Step {step_cmp['step']}:")
+        print("  A:", step_cmp['a'])
+        print("  B:", step_cmp['b'])
+        print("  Diff:", step_cmp['diff'])
