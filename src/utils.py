@@ -18,6 +18,7 @@ Functions:
 - compute_episode_cost: Compute total episode cost from trace (added).
 - dict_values_to_list: Convert values of dict for specified keys to a list (added).
 - flatten_dict_keys: Extract all flat (dotted) keys from a nested dict (added).
+- dict_key_exists: Check if a dotted/nested key exists in dict (added).
 
 Typical scenarios:
 - Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
@@ -33,6 +34,7 @@ Typical scenarios:
 - Episode cost tracking: Use compute_episode_cost to sum API or action costs for an episode trace (added).
 - Dict values to list: Use dict_values_to_list to extract values for selected keys into a list for easy batching or export (added).
 - Flatten dict keys: Use flatten_dict_keys to enumerate all keys for CSV header or extraction (added).
+- dict_key_exists: For quick nested key presence checks in complex info dicts (added).
 
 Usage examples:
     # Flatten a nested dict
@@ -43,6 +45,10 @@ Usage examples:
     # Extract flat keys
     keys = flatten_dict_keys(d)
     # keys: ['a', 'b.c', 'b.d.e']
+
+    # Check nested key exists
+    exists = dict_key_exists(d, 'b.d.e')  # True
+    missing = dict_key_exists(d, 'b.x.y') # False
 
     # Pretty-print a dict
     s = dict_to_str(d)
@@ -116,31 +122,32 @@ Usage examples:
         {"cost": 0.04}
     ]
     total = compute_episode_cost(transitions)
-    # total: 0.01 + 0.02 + 0.03 + 0.04 = 0.10
+    # total: 0.1
 
     # Dict values to list
-    d = {'a': 1, 'b': 2, 'c': 3}
-    vals = dict_values_to_list(d, ['a', 'c', 'z'])
-    # vals: [1, 3, None]
+    d = {"a": 1, "b": 2, "c": 3}
+    keys = ["a", "c"]
+    values = dict_values_to_list(d, keys)
+    # values: [1, 3]
 
     # Flatten dict keys
-    d = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
-    keys = flatten_dict_keys(d)
-    # keys: ['a', 'b.c', 'b.d.e']
+    d = {"foo": {"bar": 1}, "baz": {"qux": 2}}
+    flat_keys = flatten_dict_keys(d)
+    # flat_keys: ['foo.bar', 'baz.qux']
 """
 import json
 import copy
-from collections.abc import Iterable
+from collections.abc import Mapping
 
 
 def flatten_dict(d, parent_key="", sep="."):
     """
-    Flatten a nested dict. Keys are joined by sep (default: ".").
-    Example: {'a': 1, 'b': {'c': 2}} => {'a': 1, 'b.c': 2}
+    Flatten a nested dict using dotted keys.
+    Example: {'a': 1, 'b': {'c': 2}} -> {'a': 1, 'b.c': 2}
     """
     items = {}
     for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
         if isinstance(v, dict):
             items.update(flatten_dict(v, new_key, sep=sep))
         else:
@@ -150,13 +157,11 @@ def flatten_dict(d, parent_key="", sep="."):
 
 def flatten_dict_keys(d, parent_key="", sep="."):
     """
-    Extract all flat (dotted) keys from a nested dict.
-    Returns sorted list for deterministic order.
-    Example: {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}} => ['a', 'b.c', 'b.d.e']
+    Extract all flat keys from a nested dict using dotted notation, sorted for deterministic order.
     """
     keys = []
     for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
         if isinstance(v, dict):
             keys.extend(flatten_dict_keys(v, new_key, sep=sep))
         else:
@@ -164,50 +169,71 @@ def flatten_dict_keys(d, parent_key="", sep="."):
     return sorted(keys)
 
 
+def dict_key_exists(d, dotted_key, sep="."):
+    """
+    Check if a dotted/nested key exists in a dict.
+    Example:
+        d = {'a': 1, 'b': {'c': 2}}
+        dict_key_exists(d, 'b.c') -> True
+        dict_key_exists(d, 'b.x') -> False
+    Args:
+        d: dict (may be nested)
+        dotted_key: str, e.g. 'foo.bar.baz'
+        sep: separator (default '.')
+    Returns:
+        True if key exists, False otherwise
+    """
+    keys = dotted_key.split(sep)
+    curr = d
+    for k in keys:
+        if isinstance(curr, Mapping) and k in curr:
+            curr = curr[k]
+        else:
+            return False
+    return True
+
+
 def dict_to_str(d, indent=0):
     """
-    Pretty-print a (possibly nested) dict as a human-readable string.
+    Pretty-print a dict (possibly nested) for logging/debug.
     """
     lines = []
     for k, v in d.items():
-        prefix = "  " * indent
         if isinstance(v, dict):
-            lines.append(f"{prefix}{k}:")
-            lines.append(dict_to_str(v, indent=indent+1))
+            lines.append("  " * indent + f"{k}:")
+            lines.append(dict_to_str(v, indent + 1))
         else:
-            lines.append(f"{prefix}{k}: {v}")
+            lines.append("  " * indent + f"{k}: {v}")
     return "\n".join(lines)
 
 
-def safe_json_parse(s):
+def safe_json_parse(txt):
     """
-    Robustly parse a JSON string, returning None on failure.
-    Useful for parsing LLM outputs.
+    Robustly parse JSON, returning None on failure.
     """
     try:
-        return json.loads(s)
+        return json.loads(txt)
     except Exception:
         return None
 
 
 def get_env_name(env):
     """
-    Extract environment name from gym env or spec.
+    Extract env name from gym env or spec.
     """
-    if hasattr(env, "spec") and env.spec is not None:
+    if hasattr(env, "spec") and hasattr(env.spec, "id"):
         return env.spec.id
-    if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "spec"):
-        s = env.unwrapped.spec
-        if s is not None:
-            return s.id
-    return str(type(env))
+    elif hasattr(env, "name"):
+        return env.name
+    return str(env)
 
 
 def is_discrete_space(space):
     """
     Check if gym action space is discrete.
     """
-    return hasattr(space, "n")
+    from gymnasium.spaces import Discrete
+    return isinstance(space, Discrete) or getattr(space, "n", None) is not None
 
 
 def hash_dict(d):
@@ -224,18 +250,18 @@ def deep_copy_dict(d):
     return copy.deepcopy(d)
 
 
-def pad_list(x, target_len, pad_value=None):
+def pad_list(lst, target_len, pad_value=None):
     """
-    Pad or truncate list x to target_len. Fills with pad_value if needed.
+    Pad or truncate a list to target_len.
     """
-    if len(x) >= target_len:
-        return x[:target_len]
-    return x + [pad_value] * (target_len - len(x))
+    if len(lst) >= target_len:
+        return lst[:target_len]
+    return lst + [pad_value] * (target_len - len(lst))
 
 
 def dict_diff(d1, d2):
     """
-    Compute dict difference. Returns dict: added, removed, changed keys.
+    Compute difference between two dicts: added, removed, changed keys.
     """
     added = {k: d2[k] for k in d2 if k not in d1}
     removed = {k: d1[k] for k in d1 if k not in d2}
@@ -245,53 +271,54 @@ def dict_diff(d1, d2):
 
 def filter_dict(d, keys):
     """
-    Return dict containing only specified keys from d.
+    Return new dict with only specified keys from d.
     """
     return {k: d[k] for k in keys if k in d}
 
 
-def partition_dict(d, keys):
+def partition_dict(d, left_keys):
     """
-    Split dict d into two dicts: with keys, without keys.
+    Split dict d into two dicts based on left_keys.
     """
-    left = {k: d[k] for k in keys if k in d}
-    right = {k: d[k] for k in d if k not in keys}
+    left = {k: d[k] for k in left_keys if k in d}
+    right = {k: d[k] for k in d if k not in left_keys}
     return left, right
 
 
-def deep_merge_dicts(d1, d2):
+def deep_merge_dicts(a, b):
     """
-    Recursively merge two nested dicts.
-    d2 overrides d1.
+    Recursively merge two dicts: b overlays a.
     """
-    out = deep_copy_dict(d1)
-    for k, v in d2.items():
-        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
-            out[k] = deep_merge_dicts(out[k], v)
+    if not isinstance(a, dict):
+        return b
+    result = dict(a)
+    for k, v in b.items():
+        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+            result[k] = deep_merge_dicts(result[k], v)
         else:
-            out[k] = v
-    return out
+            result[k] = v
+    return result
 
 
-def list_chunk(x, chunk_size):
+def list_chunk(lst, n):
     """
-    Yield successive chunks of list x of size chunk_size.
+    Split list into chunks of size n.
     """
-    for i in range(0, len(x), chunk_size):
-        yield x[i:i+chunk_size]
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
 
 def compute_episode_cost(transitions, cost_keys=("cost", "api_cost")):
     """
-    Compute total episode cost from transition list.
-    Sums cost values for specified keys (top-level or in 'info').
+    Compute total episode cost from trace transitions.
+    Sums up cost fields for each transition, handling top-level or info dict.
     """
     total = 0.0
     for t in transitions:
         for key in cost_keys:
             if key in t and isinstance(t[key], (int, float)):
                 total += t[key]
-            if "info" in t and isinstance(t["info"], dict) and key in t["info"] and isinstance(t["info"][key], (int, float)):
+            elif "info" in t and isinstance(t["info"], dict) and key in t["info"] and isinstance(t["info"][key], (int, float)):
                 total += t["info"][key]
     return total
 
