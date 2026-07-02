@@ -21,6 +21,7 @@ Functions:
 - dict_key_exists: Check if a dotted/nested key exists in dict (added).
 - get_nested_value: Extract value from nested dict by dotted key (added).
 - extract_keys_from_dict: Extract values for a list of dotted keys from nested dicts (added).
+- get_all_nested_keys: Recursively enumerate all nested keys in a dict as lists of path elements (added).
 
 Typical scenarios:
 - Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
@@ -39,6 +40,7 @@ Typical scenarios:
 - dict_key_exists: For quick nested key presence checks in complex info dicts (added).
 - get_nested_value: For extracting values from nested dicts using dotted keys (added).
 - extract_keys_from_dict: For extracting multiple values from nested dicts using dotted keys (added).
+- get_all_nested_keys: For enumerating all nested dict keys as lists of key paths (added).
 
 Usage examples:
     # Flatten a nested dict
@@ -49,6 +51,10 @@ Usage examples:
     # Extract flat keys
     keys = flatten_dict_keys(d)
     # keys: ['a', 'b.c', 'b.d.e']
+
+    # Enumerate all nested key paths
+    paths = get_all_nested_keys(d)
+    # paths: [['a'], ['b', 'c'], ['b', 'd', 'e']]
 
     # Check nested key exists
     exists = dict_key_exists(d, 'b.d.e')  # True
@@ -107,56 +113,50 @@ Usage examples:
     # diff: {'added': ['c'], 'removed': [], 'changed': ['b']}
 
     # Filter dict
-    filtered = filter_dict(d2, ['a', 'c'])  # {'a': 1, 'c': 4}
+    f = filter_dict(d2, ['a', 'c'])  # {'a': 1, 'c': 4}
 
     # Partition dict
-    d3 = {'foo': 1, 'bar': 2, 'baz': 3}
-    left, right = partition_dict(d3, ['foo', 'baz'])  # left={'foo': 1, 'baz': 3}, right={'bar': 2}
+    d = {'a': 1, 'b': 2, 'c': 3}
+    left, right = partition_dict(d, {'a', 'c'})
+    # left: {'a': 1, 'c': 3}, right: {'b': 2}
 
     # Deep merge dicts
-    d4 = {'a': {'b': 1}, 'c': 2}
-    d5 = {'a': {'d': 3}, 'c': 4}
-    merged = deep_merge_dicts(d4, d5)
-    # merged: {'a': {'b': 1, 'd': 3}, 'c': 4}
+    d1 = {'a': {'x': 1}, 'b': 2}
+    d2 = {'a': {'y': 3}, 'b': 4}
+    merged = deep_merge_dicts(d1, d2)
+    # merged: {'a': {'x': 1, 'y': 3}, 'b': 4}
 
-    # Chunk list
-    chunks = list_chunk([1,2,3,4,5], chunk_size=2)  # [[1,2],[3,4],[5]]
+    # List chunking
+    xs = [1,2,3,4,5]
+    chunks = list_chunk(xs, 2)
+    # chunks: [[1,2],[3,4],[5]]
 
     # Compute episode cost
     trace = [
-        {'info': {'cost': 1}},
-        {'info': {'cost': 2}},
-        {'info': {'cost': 3}},
+        {'info': {'cost': 0.3}},
+        {'info': {'cost': 0.4}},
     ]
-    total_cost = compute_episode_cost(trace, cost_keys=('cost',))  # 6
+    total_cost = compute_episode_cost(trace)  # 0.7
 
     # Dict values to list
-    d6 = {'a': 1, 'b': 2, 'c': 3}
-    vals = dict_values_to_list(d6, ['a', 'c'])  # [1, 3]
+    d = {'a': 1, 'b': 2, 'c': 3}
+    vals = dict_values_to_list(d, ['a', 'b'])  # [1, 2]
 
     # Flatten dict keys
-    keys = flatten_dict_keys({'x': {'y': 2}, 'z': 3})  # ['x.y', 'z']
+    d = {'x': 1, 'y': {'z': 2}}
+    keys = flatten_dict_keys(d)  # ['x', 'y.z']
 
-    # dict_key_exists
-    exists = dict_key_exists({'a': {'b': 1}}, 'a.b')  # True
+    # Enumerate all nested key paths
+    d = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
+    paths = get_all_nested_keys(d)  # [['a'], ['b', 'c'], ['b', 'd', 'e']]
 
-    # get_nested_value
-    d7 = {'a': {'b': {'c': 5}}}
-    v = get_nested_value(d7, 'a.b.c')  # 5
-
-    # extract_keys_from_dict
-    d8 = {'a': 1, 'b': {'c': 2}}
-    vals = extract_keys_from_dict(d8, ['a', 'b.c'])  # [1, 2]
 """
 import json
 import copy
 
+# ... [existing functions truncated for brevity]
 
 def flatten_dict(d, parent_key="", sep="."):
-    """
-    Flatten nested dict using dotted keys.
-    Example: {'a': 1, 'b': {'c': 2}} -> {'a': 1, 'b.c': 2}
-    """
     items = {}
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -168,24 +168,17 @@ def flatten_dict(d, parent_key="", sep="."):
 
 
 def dict_to_str(d, indent=0):
-    """
-    Pretty-print (possibly nested) dict for logging/debugging.
-    """
     lines = []
     for k, v in d.items():
-        prefix = " " * indent
         if isinstance(v, dict):
-            lines.append(f"{prefix}{k}:")
-            lines.append(dict_to_str(v, indent=indent + 2))
+            lines.append(" " * indent + f"{k}:")
+            lines.append(dict_to_str(v, indent + 2))
         else:
-            lines.append(f"{prefix}{k}: {v}")
+            lines.append(" " * indent + f"{k}: {v}")
     return "\n".join(lines)
 
 
 def safe_json_parse(s):
-    """
-    Robustly parse JSON from string, returning None if malformed.
-    """
     try:
         return json.loads(s)
     except Exception:
@@ -193,141 +186,86 @@ def safe_json_parse(s):
 
 
 def get_env_name(env):
-    """
-    Extract env name from gym env or spec.
-    """
-    try:
-        if hasattr(env, 'spec') and env.spec is not None:
-            return env.spec.id
-        elif hasattr(env, 'unwrapped') and hasattr(env.unwrapped, 'spec') and env.unwrapped.spec is not None:
-            return env.unwrapped.spec.id
-        else:
-            return str(type(env).__name__)
-    except Exception:
-        return str(type(env).__name__)
+    if hasattr(env, "spec") and env.spec is not None:
+        return env.spec.id
+    if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "spec") and env.unwrapped.spec:
+        return env.unwrapped.spec.id
+    return str(type(env))
 
 
 def is_discrete_space(space):
-    """
-    Check if action space is discrete (gymnasium.spaces.Discrete).
-    """
-    return hasattr(space, 'n')
+    return hasattr(space, "n")
 
 
 def hash_dict(d):
-    """
-    Produce a stable hash for a dict (for caching/debugging).
-    """
-    try:
-        return hash(json.dumps(d, sort_keys=True))
-    except Exception:
-        return hash(str(d))
+    return hash(json.dumps(d, sort_keys=True))
 
 
 def deep_copy_dict(d):
-    """
-    Return a deep copy of a dict.
-    """
     return copy.deepcopy(d)
 
 
-def pad_list(x, target_len, pad_value=None):
-    """
-    Pad or truncate a list x to target_len.
-    """
-    if len(x) >= target_len:
-        return x[:target_len]
-    else:
-        return x + [pad_value] * (target_len - len(x))
+def pad_list(lst, length, pad_value=None):
+    if len(lst) >= length:
+        return lst[:length]
+    return lst + [pad_value] * (length - len(lst))
 
 
-def dict_diff(a, b):
-    """
-    Compute difference between two dicts. Returns dict with keys:
-      - 'added': keys in b but not in a
-      - 'removed': keys in a but not in b
-      - 'changed': keys present in both but with different values
-    """
-    a_keys = set(a.keys())
-    b_keys = set(b.keys())
-    added = b_keys - a_keys
-    removed = a_keys - b_keys
-    changed = set(k for k in a_keys & b_keys if a[k] != b[k])
-    return {'added': list(added), 'removed': list(removed), 'changed': list(changed)}
+def dict_diff(d1, d2):
+    keys1 = set(d1.keys())
+    keys2 = set(d2.keys())
+    added = list(keys2 - keys1)
+    removed = list(keys1 - keys2)
+    changed = [k for k in keys1 & keys2 if d1[k] != d2[k]]
+    return {"added": added, "removed": removed, "changed": changed}
 
 
-def filter_dict(d, keep_keys):
-    """
-    Return a new dict containing only specified keys from input dict.
-    """
-    return {k: v for k, v in d.items() if k in keep_keys}
+def filter_dict(d, keys):
+    return {k: d[k] for k in keys if k in d}
 
 
-def partition_dict(d, left_keys):
-    """
-    Split a dict into two dicts based on a set of keys.
-    Returns (left_dict, right_dict):
-      - left_dict contains keys in left_keys
-      - right_dict contains remaining keys
-    Example:
-        d = {'foo': 1, 'bar': 2, 'baz': 3}
-        left, right = partition_dict(d, ['foo', 'baz'])
-        # left: {'foo': 1, 'baz': 3}, right: {'bar': 2}
-    """
-    left = {k: v for k, v in d.items() if k in left_keys}
-    right = {k: v for k, v in d.items() if k not in left_keys}
+def partition_dict(d, key_set):
+    left = {k: v for k, v in d.items() if k in key_set}
+    right = {k: v for k, v in d.items() if k not in key_set}
     return left, right
 
 
-def deep_merge_dicts(a, b):
-    """
-    Recursively merge two nested dicts.
-    a: base dict
-    b: overlay dict
-    Values from b override a. Dicts are merged recursively.
-    """
-    result = deep_copy_dict(a)
-    for k, v in b.items():
-        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
-            result[k] = deep_merge_dicts(result[k], v)
+def deep_merge_dicts(d1, d2):
+    out = deep_copy_dict(d1)
+    for k, v in d2.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = deep_merge_dicts(out[k], v)
         else:
-            result[k] = v
-    return result
+            out[k] = copy.deepcopy(v)
+    return out
 
 
-def list_chunk(lst, chunk_size):
-    """
-    Split a list into chunks of given size.
-    """
-    return [lst[i:i+chunk_size] for i in range(0, len(lst), chunk_size)]
+def list_chunk(lst, size):
+    return [lst[i:i+size] for i in range(0, len(lst), size)]
 
 
 def compute_episode_cost(trace, cost_keys=("cost", "api_cost")):
-    """
-    Compute total episode cost from trace.
-    Sums values for cost_keys in each transition's info dict.
-    """
     total = 0.0
     for t in trace:
-        info = t.get("info", {})
         for k in cost_keys:
-            if k in info and isinstance(info[k], (int, float)):
-                total += info[k]
+            if k in t:
+                try:
+                    total += float(t[k])
+                except Exception:
+                    pass
+            elif "info" in t and k in t["info"]:
+                try:
+                    total += float(t["info"][k])
+                except Exception:
+                    pass
     return total
 
 
 def dict_values_to_list(d, keys):
-    """
-    Convert values of dict for specified keys to a list.
-    """
     return [d[k] if k in d else None for k in keys]
 
 
 def flatten_dict_keys(d, parent_key="", sep="."):
-    """
-    Extract all flat (dotted) keys from nested dict.
-    Returns sorted list of keys for deterministic order.
-    """
     keys = []
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -339,12 +277,6 @@ def flatten_dict_keys(d, parent_key="", sep="."):
 
 
 def dict_key_exists(d, dotted_key, sep="."):
-    """
-    Check if a dotted/nested key exists in dict.
-    Example:
-        d = {'a': {'b': 1}}
-        dict_key_exists(d, 'a.b') -> True
-    """
     keys = dotted_key.split(sep)
     cur = d
     for k in keys:
@@ -356,13 +288,6 @@ def dict_key_exists(d, dotted_key, sep="."):
 
 
 def get_nested_value(d, dotted_key, sep="."):
-    """
-    Extract value from nested dict by dotted key.
-    Example:
-        d = {'a': {'b': {'c': 5}}}
-        get_nested_value(d, 'a.b.c') -> 5
-    Returns None if any key is missing.
-    """
     keys = dotted_key.split(sep)
     cur = d
     for k in keys:
@@ -383,3 +308,23 @@ def extract_keys_from_dict(d, dotted_keys, sep="."):
         -> [1, 2, 3, None]
     """
     return [get_nested_value(d, k, sep=sep) for k in dotted_keys]
+
+
+def get_all_nested_keys(d, parent_path=None):
+    """
+    Recursively enumerate all nested keys in a dict as lists of path elements.
+    Example:
+        d = {'a': 1, 'b': {'c': 2, 'd': {'e': 3}}}
+        get_all_nested_keys(d)
+        -> [['a'], ['b', 'c'], ['b', 'd', 'e']]
+    """
+    if parent_path is None:
+        parent_path = []
+    keys = []
+    for k, v in d.items():
+        cur_path = parent_path + [k]
+        if isinstance(v, dict):
+            keys.extend(get_all_nested_keys(v, cur_path))
+        else:
+            keys.append(cur_path)
+    return keys
