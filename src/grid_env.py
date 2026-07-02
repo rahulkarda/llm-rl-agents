@@ -11,7 +11,7 @@ Design:
 
 Usage example:
     from grid_env import SimpleGridWorldEnv
-    env = SimpleGridWorldEnv(grid_size=6, max_steps=50)
+    env = SimpleGridWorldEnv(grid_size=8, max_steps=50)
     obs, _ = env.reset()
     done = False
     while not done:
@@ -38,7 +38,7 @@ class SimpleGridWorldEnv(gym.Env):
     """
     metadata = {"render.modes": ["human"]}
 
-    def __init__(self, grid_size=6, max_steps=50):
+    def __init__(self, grid_size=8, max_steps=50):
         super().__init__()
         self.grid_size = grid_size
         self.max_steps = max_steps
