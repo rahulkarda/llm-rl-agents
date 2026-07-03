@@ -6,12 +6,12 @@ Design:
 - Actions: north, south, east, west.
 - Reward: +1 for reaching goal (bottom-right), else 0.
 - Observation: string describing position and grid.
-- Max steps: configurable (default 50).
+- Max steps: configurable (default 100).
 - Step returns obs (str), reward (float), done (bool), truncated (bool), info (dict).
 
 Usage example:
     from grid_env import SimpleGridWorldEnv
-    env = SimpleGridWorldEnv(grid_size=8, max_steps=50)
+    env = SimpleGridWorldEnv(grid_size=8, max_steps=100)
     obs, _ = env.reset()
     done = False
     while not done:
@@ -38,7 +38,7 @@ class SimpleGridWorldEnv(gym.Env):
     """
     metadata = {"render.modes": ["human"]}
 
-    def __init__(self, grid_size=8, max_steps=50):
+    def __init__(self, grid_size=8, max_steps=100):
         super().__init__()
         self.grid_size = grid_size
         self.max_steps = max_steps
