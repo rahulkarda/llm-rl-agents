@@ -7,6 +7,7 @@ Subclasses implement 'act', and optionally manage internal state (via 'reset').
 Current provided agents:
 - RandomAgent: emits random actions from the action space.
 - DeterministicAgent: always emits a fixed action or the lowest-valued action.
+- GreedyGridAgent: moves toward goal in SimpleGridWorldEnv (heuristic).
 
 Usage:
     # Instantiate an agent with env.action_space
@@ -21,6 +22,7 @@ Extension notes:
 """
 from abc import ABC, abstractmethod
 from typing import Any
+import re
 
 
 class Agent(ABC):
@@ -150,3 +152,55 @@ class DeterministicAgent(Agent):
                 raise ValueError(f"Index {idx} out of bounds for discrete action space of size {n}")
         else:
             raise TypeError("set_fixed_action_index: action_space is not Discrete")
+
+
+class GreedyGridAgent(Agent):
+    """
+    Heuristic agent for SimpleGridWorldEnv.
+    Moves toward the goal using minimal steps (greedy):
+      - If not at goal, chooses action to move closer in x/y.
+    Requires observation as string from SimpleGridWorldEnv._get_obs().
+    """
+    def __init__(self, action_space):
+        super().__init__()
+        self.action_space = action_space
+
+    def act(self, observation: Any) -> Any:
+        """
+        Parses position and goal from observation string, selects action toward goal.
+        Action codes:
+            0 = north, 1 = south, 2 = east, 3 = west
+        """
+        # Example obs: "You are at position (x, y) in a NxN grid. Goal is at (gx, gy)."
+        pos = self._parse_position(observation)
+        goal = self._parse_goal(observation)
+        if pos is None or goal is None:
+            # Fallback: random action
+            return self.action_space.sample()
+        x, y = pos
+        gx, gy = goal
+        # Decide to move toward goal
+        if x < gx:
+            return 1  # south
+        elif x > gx:
+            return 0  # north
+        elif y < gy:
+            return 2  # east
+        elif y > gy:
+            return 3  # west
+        else:
+            return self.action_space.sample()  # already at goal, random action
+
+    def _parse_position(self, obs_str):
+        # Find 'position (x, y)'
+        m = re.search(r"position \((\d+), (\d+)\)", obs_str)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+        return None
+
+    def _parse_goal(self, obs_str):
+        # Find 'Goal is at (gx, gy)'
+        m = re.search(r"Goal is at \((\d+), (\d+)\)", obs_str)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+        return None
