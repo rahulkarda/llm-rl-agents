@@ -134,32 +134,19 @@ class DeterministicAgent(Agent):
                 raise TypeError("action_space does not have 'low' attribute (not Box)")
             return low
         else:
-            raise NotImplementedError("DeterministicAgent: unsupported action space type")
+            raise NotImplementedError("DeterministicAgent not implemented for action space type")
 
-    def set_fixed_action_index(self, idx: int):
+    def set_fixed_action_index(self, idx):
         """
-        Set the action index for discrete action spaces.
-        Args:
-            idx: Integer index (must be in bounds for action_space.n)
+        For Discrete spaces, sets which action index to return.
         """
-        if hasattr(self.action_space, 'n'):
-            n = getattr(self.action_space, 'n', None)
-            if n is None:
-                raise TypeError("action_space does not have 'n' attribute (not Discrete)")
-            if 0 <= idx < n:
-                self.fixed_action_index = idx
-            else:
-                raise ValueError(f"Index {idx} out of bounds for discrete action space of size {n}")
-        else:
-            raise TypeError("set_fixed_action_index: action_space is not Discrete")
+        self.fixed_action_index = idx
 
 
 class GreedyGridAgent(Agent):
     """
-    Heuristic agent for SimpleGridWorldEnv.
-    Moves toward the goal using minimal steps (greedy):
-      - If not at goal, chooses action to move closer in x/y.
-    Requires observation as string from SimpleGridWorldEnv._get_obs().
+    Heuristic agent for SimpleGridWorldEnv: moves toward goal using shortest (Manhattan) path.
+    Prefers east before south on tie-breaks for more direct goal pursuit.
     """
     def __init__(self, action_space):
         super().__init__()
@@ -167,29 +154,28 @@ class GreedyGridAgent(Agent):
 
     def act(self, observation: Any) -> Any:
         """
-        Parses position and goal from observation string, selects action toward goal.
-        Action codes:
-            0 = north, 1 = south, 2 = east, 3 = west
+        Parse observation string to find agent position and goal, then move toward goal.
+        Actions: 0=north, 1=south, 2=east, 3=west
+        Returns action index to reduce Manhattan distance to goal.
+        Prefers east before south on tie-breaks.
         """
-        # Example obs: "You are at position (x, y) in a NxN grid. Goal is at (gx, gy)."
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
         if pos is None or goal is None:
-            # Fallback: random action
-            return self.action_space.sample()
+            return self.action_space.sample()  # fallback
         x, y = pos
         gx, gy = goal
-        # Decide to move toward goal
-        if x < gx:
-            return 1  # south
-        elif x > gx:
-            return 0  # north
-        elif y < gy:
+
+        # Prefer east before south if both are possible
+        if y < gy:
             return 2  # east
+        elif x < gx:
+            return 1  # south
         elif y > gy:
             return 3  # west
-        else:
-            return self.action_space.sample()  # already at goal, random action
+        elif x > gx:
+            return 0  # north
+        return self.action_space.sample()  # already at goal, random action
 
     def _parse_position(self, obs_str):
         # Find 'position (x, y)'
