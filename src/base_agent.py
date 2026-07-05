@@ -4,7 +4,15 @@ from typing import Any
 class Agent(ABC):
     """
     Abstract base class for RL agents.
-    Agents observe environment state and emit an action.
+    
+    Agents observe the environment state and emit an action.
+    Subclasses must implement 'act'.
+    Use as a base for all agent types (random, heuristic, LLM, etc).
+
+    Usage:
+        - Subclass Agent and implement act(observation) -> action.
+        - Optionally override reset() if agent maintains internal state.
+        - Call reset() at start of each episode.
     """
     @abstractmethod
     def act(self, observation: Any) -> Any:
@@ -20,5 +28,6 @@ class Agent(ABC):
     def reset(self) -> None:
         """
         Called at episode start. Override if agent maintains internal state.
+        Default: no-op.
         """
         pass
