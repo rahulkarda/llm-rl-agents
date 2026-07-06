@@ -75,7 +75,9 @@ class RandomAgent(Agent):
         """
         Return a random action from the action space.
         """
-        return self.action_space.sample()
+        action = self.action_space.sample()
+        self.step()
+        return action
 
 
 class DeterministicAgent(Agent):
@@ -113,7 +115,9 @@ class DeterministicAgent(Agent):
             - Else: raise NotImplementedError.
         """
         if self.fixed_action is not None:
-            return self.fixed_action
+            action = self.fixed_action
+            self.step()
+            return action
 
         # Discrete action space: has 'n' attribute
         if hasattr(self.action_space, 'n'):
@@ -124,7 +128,9 @@ class DeterministicAgent(Agent):
             if not isinstance(idx, int):
                 raise TypeError(f"fixed_action_index {idx} is not an integer")
             if 0 <= idx < n:
-                return idx
+                action = idx
+                self.step()
+                return action
             else:
                 raise ValueError(f"fixed_action_index {idx} out of bounds for Discrete(n={n})")
         # Box action space: has 'low' attribute
@@ -132,48 +138,45 @@ class DeterministicAgent(Agent):
             low = getattr(self.action_space, 'low', None)
             if low is None:
                 raise TypeError("action_space does not have 'low' attribute (not Box)")
-            return low
+            action = low
+            self.step()
+            return action
         else:
-            raise NotImplementedError("DeterministicAgent does not support this action space type.")
+            raise NotImplementedError("DeterministicAgent only supports Discrete and Box action spaces.")
 
-    def set_fixed_action_index(self, idx: int):
-        """
-        Set the fixed action index for Discrete action spaces.
-        """
+    def set_fixed_action_index(self, idx):
         self.fixed_action_index = idx
 
 
 class GreedyGridAgent(Agent):
     """
-    Heuristic agent for SimpleGridWorldEnv (text-based grid).
-    Moves directly toward the goal, preferring east over south on tie-breaks.
+    Heuristic agent for SimpleGridWorldEnv.
+    Moves toward goal using Manhattan distance, preferring east before south.
     """
     def __init__(self, action_space):
         super().__init__()
         self.action_space = action_space
-        # Action mapping: 0=north, 1=south, 2=east, 3=west
 
     def act(self, observation: Any) -> Any:
-        # Parse position and goal from observation string
+        # Observation: text with position and grid info
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
         if pos is None or goal is None:
-            return self.action_space.sample()
+            return self.action_space.sample()  # fallback
         x, y = pos
         gx, gy = goal
-        dx = gx - x
-        dy = gy - y
-        # Prefer east if dy > 0, then south if dx > 0
-        if dy > 0:
-            return 2  # east
-        elif dx > 0:
-            return 1  # south
-        elif dx < 0:
-            return 0  # north
-        elif dy < 0:
-            return 3  # west
+        if x < gx:
+            action = 1  # south
+        elif y < gy:
+            action = 2  # east
+        elif y > gy:
+            action = 3  # west
+        elif x > gx:
+            action = 0  # north
         else:
-            return self.action_space.sample()  # already at goal, random action
+            action = self.action_space.sample()  # already at goal, random action
+        self.step()
+        return action
 
     def _parse_position(self, obs_str):
         # Find 'position (x, y)'
@@ -188,3 +191,4 @@ class GreedyGridAgent(Agent):
         if m:
             return int(m.group(1)), int(m.group(2))
         return None
+
