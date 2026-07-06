@@ -134,48 +134,46 @@ class DeterministicAgent(Agent):
                 raise TypeError("action_space does not have 'low' attribute (not Box)")
             return low
         else:
-            raise NotImplementedError("DeterministicAgent not implemented for action space type")
+            raise NotImplementedError("DeterministicAgent does not support this action space type.")
 
-    def set_fixed_action_index(self, idx):
+    def set_fixed_action_index(self, idx: int):
         """
-        For Discrete spaces, sets which action index to return.
+        Set the fixed action index for Discrete action spaces.
         """
         self.fixed_action_index = idx
 
 
 class GreedyGridAgent(Agent):
     """
-    Heuristic agent for SimpleGridWorldEnv: moves toward goal using shortest (Manhattan) path.
-    Prefers east before south on tie-breaks for more direct goal pursuit.
+    Heuristic agent for SimpleGridWorldEnv (text-based grid).
+    Moves directly toward the goal, preferring east over south on tie-breaks.
     """
     def __init__(self, action_space):
         super().__init__()
         self.action_space = action_space
+        # Action mapping: 0=north, 1=south, 2=east, 3=west
 
     def act(self, observation: Any) -> Any:
-        """
-        Parse observation string to find agent position and goal, then move toward goal.
-        Actions: 0=north, 1=south, 2=east, 3=west
-        Returns action index to reduce Manhattan distance to goal.
-        Prefers east before south on tie-breaks.
-        """
+        # Parse position and goal from observation string
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
         if pos is None or goal is None:
-            return self.action_space.sample()  # fallback
+            return self.action_space.sample()
         x, y = pos
         gx, gy = goal
-
-        # Prefer east before south if both are possible
-        if y < gy:
+        dx = gx - x
+        dy = gy - y
+        # Prefer east if dy > 0, then south if dx > 0
+        if dy > 0:
             return 2  # east
-        elif x < gx:
+        elif dx > 0:
             return 1  # south
-        elif y > gy:
-            return 3  # west
-        elif x > gx:
+        elif dx < 0:
             return 0  # north
-        return self.action_space.sample()  # already at goal, random action
+        elif dy < 0:
+            return 3  # west
+        else:
+            return self.action_space.sample()  # already at goal, random action
 
     def _parse_position(self, obs_str):
         # Find 'position (x, y)'
