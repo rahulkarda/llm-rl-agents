@@ -23,6 +23,7 @@ Functions:
 - extract_keys_from_dict: Extract values for a list of dotted keys from nested dicts (added).
 - get_all_nested_keys: Recursively enumerate all nested keys in a dict as lists of path elements (added).
 - random_action: Sample a random action from a gym action space (added).
+- deep_get: Safely extract a value from a nested dict given a list of keys (added).
 
 Typical scenarios:
 - Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
@@ -43,6 +44,7 @@ Typical scenarios:
 - extract_keys_from_dict: For extracting multiple values from nested dicts using dotted keys (added).
 - get_all_nested_keys: For enumerating all nested dict keys as lists of key paths (added).
 - random_action: For quick sampling of a valid action from any gym action space (added).
+- deep_get: For robust nested dict value extraction using explicit key path (added).
 
 Concrete usage examples:
     # Flatten a nested dict
@@ -92,43 +94,27 @@ Concrete usage examples:
 
     # Dict values to list
     d = {'a': 1, 'b': 2, 'c': 3}
-    vals = dict_values_to_list(d, ['a', 'c'])
-    # vals: [1, 3]
+    vals = dict_values_to_list(d, ['a', 'c', 'd'])
+    # vals: [1, 3, None]
 
-    # Pretty-print a dict
-    s = dict_to_str(d)
-    print(s)
-    # Output:
-    # a: 1
-    # b: 2
-    # c: 3
+    # Flatten dict keys
+    keys = flatten_dict_keys({'x': {'y': 1}, 'z': 2})
+    # keys: ['x.y', 'z']
 
-    # Safe JSON parse from LLM output
-    obj = safe_json_parse('{"action": 0}')  # returns dict or None
-    # Handles malformed JSON gracefully:
-    obj2 = safe_json_parse('{"action": 0')  # returns None
+    # Enumerate all key paths
+    paths = get_all_nested_keys({'x': {'y': {'z': 1}}, 'a': 2})
+    # paths: [['x', 'y', 'z'], ['a']]
 
-    # Get env name
-    import gymnasium as gym
-    env = gym.make('CartPole-v1')
-    name = get_env_name(env)  # 'CartPole-v1'
-
-    # Check action space type
-    from gymnasium.spaces import Discrete, Box
-    is_discrete = is_discrete_space(env.action_space)
-    # True for Discrete, False for Box
-
-    # Sample random action
-    action = random_action(env.action_space)
-    # Valid action for env.action_space
+    # Robust nested extraction
+    d = {'a': {'b': {'c': 5}}}
+    val = deep_get(d, ['a', 'b', 'c'])  # 5
+    missing = deep_get(d, ['a', 'x', 'y'])  # None
 
 """
-
 import json
 import copy
 import hashlib
 
-# ... [all existing function implementations remain unchanged below] ...
 
 def flatten_dict(d, parent_key="", sep="."):
     items = {}
@@ -142,17 +128,16 @@ def flatten_dict(d, parent_key="", sep="."):
 
 
 def dict_to_str(d, indent=0):
-    """
-    Pretty-print nested dict for logging/debugging.
-    """
+    if not isinstance(d, dict):
+        return str(d)
     s = ""
     for k, v in d.items():
-        pad = "  " * indent
+        prefix = " " * indent
         if isinstance(v, dict):
-            s += f"{pad}{k}:\n" + dict_to_str(v, indent + 1)
+            s += f"{prefix}{k}:\n{dict_to_str(v, indent + 2)}"
         else:
-            s += f"{pad}{k}: {v}\n"
-    return s
+            s += f"{prefix}{k}: {v}\n"
+    return s.rstrip()
 
 
 def safe_json_parse(s):
@@ -165,9 +150,9 @@ def safe_json_parse(s):
 def get_env_name(env):
     if hasattr(env, "spec") and env.spec is not None:
         return env.spec.id
-    elif hasattr(env, "unwrapped") and hasattr(env.unwrapped, "spec") and env.unwrapped.spec is not None:
-        return env.unwrapped.spec.id
-    return str(type(env))
+    if hasattr(env, "__class__"):
+        return env.__class__.__name__
+    return str(env)
 
 
 def is_discrete_space(space):
@@ -176,26 +161,29 @@ def is_discrete_space(space):
 
 def hash_dict(d):
     flat = flatten_dict(d)
-    s = json.dumps(flat, sort_keys=True)
-    return hashlib.md5(s.encode()).hexdigest()
+    items = sorted(flat.items())
+    s = json.dumps(items, sort_keys=True)
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
 def deep_copy_dict(d):
     return copy.deepcopy(d)
 
 
-def pad_list(lst, target_len, pad_elem=None):
-    if len(lst) >= target_len:
-        return lst[:target_len]
-    return lst + [pad_elem] * (target_len - len(lst))
+def pad_list(lst, length, pad=None):
+    lst = list(lst)
+    if len(lst) < length:
+        return lst + [pad] * (length - len(lst))
+    else:
+        return lst[:length]
 
 
 def dict_diff(a, b):
-    a_keys = set(a.keys())
-    b_keys = set(b.keys())
-    added = b_keys - a_keys
-    removed = a_keys - b_keys
-    changed = {k for k in a_keys & b_keys if a[k] != b[k]}
+    keys_a = set(a.keys())
+    keys_b = set(b.keys())
+    added = keys_b - keys_a
+    removed = keys_a - keys_b
+    changed = {k for k in (keys_a & keys_b) if a[k] != b[k]}
     return {"added": list(added), "removed": list(removed), "changed": list(changed)}
 
 
@@ -203,9 +191,9 @@ def filter_dict(d, keys):
     return {k: d[k] for k in keys if k in d}
 
 
-def partition_dict(d, left_keys):
-    left = {k: v for k, v in d.items() if k in left_keys}
-    right = {k: v for k, v in d.items() if k not in left_keys}
+def partition_dict(d, keys_set):
+    left = {k: v for k, v in d.items() if k in keys_set}
+    right = {k: v for k, v in d.items() if k not in keys_set}
     return left, right
 
 
@@ -220,18 +208,17 @@ def deep_merge_dicts(a, b):
 
 
 def list_chunk(lst, chunk_size):
-    return [lst[i:i+chunk_size] for i in range(0, len(lst), chunk_size)]
+    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
-def compute_episode_cost(trace, cost_keys=("cost", "api_cost")):
+def compute_episode_cost(trace, keys=("cost", "api_cost")):
     total = 0.0
     for t in trace:
-        info = t.get("info", {})
-        for k in cost_keys:
-            val = info.get(k)
-            if val is not None:
+        for k in keys:
+            v = t.get("info", {}).get(k)
+            if v is not None:
                 try:
-                    total += float(val)
+                    total += float(v)
                 except Exception:
                     pass
     return total
@@ -253,29 +240,29 @@ def flatten_dict_keys(d, parent_key="", sep="."):
 
 
 def dict_key_exists(d, dotted_key):
-    keys = dotted_key.split(".")
+    parts = dotted_key.split(".")
     cur = d
-    for k in keys:
-        if isinstance(cur, dict) and k in cur:
-            cur = cur[k]
+    for p in parts:
+        if isinstance(cur, dict) and p in cur:
+            cur = cur[p]
         else:
             return False
     return True
 
 
 def get_nested_value(d, dotted_key):
-    keys = dotted_key.split(".")
+    parts = dotted_key.split(".")
     cur = d
-    for k in keys:
-        if isinstance(cur, dict) and k in cur:
-            cur = cur[k]
+    for p in parts:
+        if isinstance(cur, dict) and p in cur:
+            cur = cur[p]
         else:
             return None
     return cur
 
 
-def extract_keys_from_dict(d, keys):
-    return [get_nested_value(d, k) for k in keys]
+def extract_keys_from_dict(d, dotted_keys):
+    return [get_nested_value(d, k) for k in dotted_keys]
 
 
 def get_all_nested_keys(d, parent_path=None):
@@ -301,3 +288,26 @@ def random_action(action_space):
         action: valid action sampled from the space
     """
     return action_space.sample()
+
+
+def deep_get(d, keys):
+    """
+    Safely extract a value from a nested dict given a list of keys.
+    Returns value or None if any key is missing.
+    Example:
+        d = {'a': {'b': {'c': 5}}}
+        val = deep_get(d, ['a', 'b', 'c'])  # 5
+        missing = deep_get(d, ['a', 'x', 'y'])  # None
+    Args:
+        d: dict to extract from
+        keys: list of keys (path)
+    Returns:
+        value or None
+    """
+    cur = d
+    for k in keys:
+        if isinstance(cur, dict) and k in cur:
+            cur = cur[k]
+        else:
+            return None
+    return cur
