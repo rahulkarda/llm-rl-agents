@@ -38,6 +38,7 @@ import gymnasium as gym
 from agent import RandomAgent
 from utils import compute_episode_cost, flatten_dict_keys, dict_values_to_list
 
+
 def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=None):
     """
     Evaluate win-rate of agent vs baseline on env_fn across episodes.
@@ -87,6 +88,7 @@ def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=No
         "episodes": episodes,
     }
 
+
 def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "api_cost")):
     """
     Evaluate agent cost per episode for episodes on env_fn.
@@ -113,75 +115,72 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
                 "observation": obs,
                 "action": action,
                 "reward": reward,
-                "info": info,
+                "info": info
             }
-            # Optionally propagate cost if present in info or elsewhere
-            for key in cost_keys:
-                if key in info and isinstance(info[key], (int, float)):
-                    transition[key] = info[key]
             transitions.append(transition)
             obs = obs2
-        total_cost = compute_episode_cost(transitions, cost_keys=cost_keys)
-        episode_costs.append(total_cost)
+        cost = compute_episode_cost(transitions, cost_keys=cost_keys)
+        episode_costs.append(cost)
         env.close()
-    avg_cost = sum(episode_costs) / len(episode_costs) if episode_costs else 0.0
+    avg_cost = sum(episode_costs) / episodes if episodes > 0 else 0.0
     return {
         "avg_cost": avg_cost,
         "episode_costs": episode_costs,
         "episodes": episodes,
     }
 
+
 def compare_traces_side_by_side(trace_a, trace_b, keys=None):
     """
-    Compare two episode traces side-by-side step-wise.
+    Stepwise comparison of two episode traces.
     Args:
-        trace_a: List of transition dicts (episode A).
-        trace_b: List of transition dicts (episode B).
-        keys: List of keys to compare (default: intersection of flat keys in both traces).
+        trace_a: list of transition dicts (from episode A)
+        trace_b: list of transition dicts (from episode B)
+        keys: list of keys to extract from each transition (default: all flat keys from both traces)
     Returns:
-        List of dicts for each step: {'step': i, 'a': {...}, 'b': {...}, 'diff': {...}}
+        List of dicts for each step:
+            {
+                'step': step_idx,
+                'a': {key: value},
+                'b': {key: value},
+                'diff': {key: True/False (changed)}
+            }
     """
-    max_len = max(len(trace_a), len(trace_b))
-    # Determine keys to compare
+    # Compute max steps
+    max_steps = max(len(trace_a), len(trace_b))
+    # Compute keys if not provided
     if keys is None:
-        keys_a = set(flatten_dict_keys(trace_a[0])) if trace_a else set()
-        keys_b = set(flatten_dict_keys(trace_b[0])) if trace_b else set()
-        keys = sorted(list(keys_a & keys_b)) if keys_a and keys_b else None
-    comparison = []
-    for i in range(max_len):
+        # Get all flat keys from both traces
+        all_keys = set()
+        for t in trace_a:
+            all_keys.update(flatten_dict_keys(t))
+        for t in trace_b:
+            all_keys.update(flatten_dict_keys(t))
+        keys = sorted(all_keys)
+    steps = []
+    for i in range(max_steps):
         ta = trace_a[i] if i < len(trace_a) else {}
         tb = trace_b[i] if i < len(trace_b) else {}
-        # Extract values for keys
-        if keys:
-            vals_a = {k: ta.get(k, None) for k in keys}
-            vals_b = {k: tb.get(k, None) for k in keys}
-        else:
-            # Use all keys
-            all_keys = sorted(set(ta.keys()) | set(tb.keys()))
-            vals_a = {k: ta.get(k, None) for k in all_keys}
-            vals_b = {k: tb.get(k, None) for k in all_keys}
-        # Diff: show keys where values differ
-        diff = {k: (vals_a[k], vals_b[k]) for k in vals_a if vals_a[k] != vals_b[k]}
-        comparison.append({
-            'step': i,
-            'a': vals_a,
-            'b': vals_b,
-            'diff': diff,
+        # Flatten each transition
+        flat_a = {k: get_nested_value(ta, k) for k in keys}
+        flat_b = {k: get_nested_value(tb, k) for k in keys}
+        # Diff: True if values differ
+        diff = {k: flat_a[k] != flat_b[k] for k in keys}
+        steps.append({
+            "step": i,
+            "a": flat_a,
+            "b": flat_b,
+            "diff": diff
         })
-    return comparison
+    return steps
 
+# Helper: get_nested_value (dotted keys)
+from utils import get_nested_value
+
+# Example usage for manual testing
 if __name__ == "__main__":
-    # Simple test: RandomAgent vs itself on CartPole
-    env_fn = lambda: gym.make('CartPole-v1')
-    agent = RandomAgent(env_fn().action_space)
-    stats = evaluate_win_rate(agent, env_fn, episodes=10)
-    print("Agent win rate:", stats["agent_win_rate"], "Wins:", stats["agent_wins"], "/", stats["episodes"])
-    # Test cost-per-episode (CartPole does not have cost info, so all zero)
-    cost_stats = evaluate_cost_per_episode(agent, env_fn, episodes=5)
-    print("Average episode cost:", cost_stats["avg_cost"], "Episode costs:", cost_stats["episode_costs"])
-    # Trace comparison example
     trace_a = [
-        {"observation": "state1", "action": 0, "reward": 1.0},
+        {"observation": "state1", "action": 0, "reward": 0.5},
         {"observation": "state2", "action": 1, "reward": 0.0},
     ]
     trace_b = [
