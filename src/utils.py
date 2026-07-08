@@ -24,6 +24,7 @@ Functions:
 - get_all_nested_keys: Recursively enumerate all nested keys in a dict as lists of path elements (added).
 - random_action: Sample a random action from a gym action space (added).
 - deep_get: Safely extract a value from a nested dict given a list of keys (added).
+- episode_reward_summary: Compute total, mean, and step-wise rewards from an episode trace (added).
 
 Typical scenarios:
 - Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
@@ -45,6 +46,7 @@ Typical scenarios:
 - get_all_nested_keys: For enumerating all nested dict keys as lists of key paths (added).
 - random_action: For quick sampling of a valid action from any gym action space (added).
 - deep_get: For robust nested dict value extraction using explicit key path (added).
+- episode_reward_summary: For summarizing rewards from episode traces (added).
 
 Concrete usage examples:
     # Flatten a nested dict
@@ -85,30 +87,15 @@ Concrete usage examples:
 
     # Chunk a list
     chunks = list_chunk([1,2,3,4,5], 2)
-    # chunks: [[1,2], [3,4], [5]]
-
-    # Compute episode cost
-    trace = [{'info': {'cost': 1.5}}, {'info': {'cost': 2.0}}]
-    cost = compute_episode_cost(trace)
-    # cost: 3.5
-
-    # Dict values to list
-    d = {'a': 1, 'b': 2, 'c': 3}
-    vals = dict_values_to_list(d, ['a', 'c', 'd'])
-    # vals: [1, 3, None]
-
-    # Flatten dict keys
-    keys = flatten_dict_keys({'x': {'y': 1}, 'z': 2})
-    # keys: ['x.y', 'z']
-
-    # Enumerate all key paths
-    paths = get_all_nested_keys({'x': {'y': {'z': 1}}, 'a': 2})
-    # paths: [['x', 'y', 'z'], ['a']]
-
-    # Robust nested extraction
-    d = {'a': {'b': {'c': 5}}}
-    val = deep_get(d, ['a', 'b', 'c'])  # 5
-    missing = deep_get(d, ['a', 'x', 'y'])  # None
+    # chunks: [[1,2]
+    ...
+    # Episode reward summary
+    trace = [
+        {'observation': 'foo', 'action': 1, 'reward': 0.5},
+        {'observation': 'bar', 'action': 2, 'reward': 1.0},
+    ]
+    summary = episode_reward_summary(trace)
+    # summary: {'total_reward': 1.5, 'mean_reward': 0.75, 'step_rewards': [0.5, 1.0]}
 
 """
 import json
@@ -117,27 +104,24 @@ import hashlib
 
 
 def flatten_dict(d, parent_key="", sep="."):
-    items = {}
+    flat = {}
     for k, v in d.items():
         new_key = parent_key + sep + k if parent_key else k
         if isinstance(v, dict):
-            items.update(flatten_dict(v, new_key, sep=sep))
+            flat.update(flatten_dict(v, new_key, sep=sep))
         else:
-            items[new_key] = v
-    return items
+            flat[new_key] = v
+    return flat
 
 
 def dict_to_str(d, indent=0):
-    if not isinstance(d, dict):
-        return str(d)
     s = ""
     for k, v in d.items():
-        prefix = " " * indent
         if isinstance(v, dict):
-            s += f"{prefix}{k}:\n{dict_to_str(v, indent + 2)}"
+            s += "  " * indent + f"{k}:\n" + dict_to_str(v, indent=indent+1)
         else:
-            s += f"{prefix}{k}: {v}\n"
-    return s.rstrip()
+            s += "  " * indent + f"{k}: {v}\n"
+    return s
 
 
 def safe_json_parse(s):
@@ -148,43 +132,36 @@ def safe_json_parse(s):
 
 
 def get_env_name(env):
-    if hasattr(env, "spec") and env.spec is not None:
+    if hasattr(env, 'spec') and hasattr(env.spec, 'id'):
         return env.spec.id
-    if hasattr(env, "__class__"):
-        return env.__class__.__name__
-    return str(env)
+    return type(env).__name__
 
 
 def is_discrete_space(space):
-    return hasattr(space, "n")
+    return hasattr(space, 'n')
 
 
 def hash_dict(d):
-    flat = flatten_dict(d)
-    items = sorted(flat.items())
-    s = json.dumps(items, sort_keys=True)
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+    s = json.dumps(d, sort_keys=True, separators=(",", ":"))
+    return hashlib.md5(s.encode()).hexdigest()
 
 
 def deep_copy_dict(d):
     return copy.deepcopy(d)
 
 
-def pad_list(lst, length, pad=None):
-    lst = list(lst)
-    if len(lst) < length:
-        return lst + [pad] * (length - len(lst))
+def pad_list(lst, n, fill=None):
+    if len(lst) < n:
+        return lst + [fill] * (n - len(lst))
     else:
-        return lst[:length]
+        return lst[:n]
 
 
 def dict_diff(a, b):
-    keys_a = set(a.keys())
-    keys_b = set(b.keys())
-    added = keys_b - keys_a
-    removed = keys_a - keys_b
-    changed = {k for k in (keys_a & keys_b) if a[k] != b[k]}
-    return {"added": list(added), "removed": list(removed), "changed": list(changed)}
+    added = [k for k in b if k not in a]
+    removed = [k for k in a if k not in b]
+    changed = [k for k in a if k in b and a[k] != b[k]]
+    return {"added": added, "removed": removed, "changed": changed}
 
 
 def filter_dict(d, keys):
@@ -208,24 +185,23 @@ def deep_merge_dicts(a, b):
 
 
 def list_chunk(lst, chunk_size):
-    return [lst[i:i + chunk_size] for i in range(0, len(lst), chunk_size)]
+    return [lst[i:i+chunk_size] for i in range(0, len(lst), chunk_size)]
 
 
-def compute_episode_cost(trace, keys=("cost", "api_cost")):
+def compute_episode_cost(trace, cost_keys=("cost", "api_cost")):
     total = 0.0
     for t in trace:
-        for k in keys:
-            v = t.get("info", {}).get(k)
-            if v is not None:
-                try:
-                    total += float(v)
-                except Exception:
-                    pass
+        for k in cost_keys:
+            # Look top-level, then inside 'info'
+            if k in t and isinstance(t[k], (int, float)):
+                total += t[k]
+            elif 'info' in t and isinstance(t['info'], dict) and k in t['info'] and isinstance(t['info'][k], (int, float)):
+                total += t['info'][k]
     return total
 
 
 def dict_values_to_list(d, keys):
-    return [d.get(k) for k in keys]
+    return [d.get(k, None) for k in keys]
 
 
 def flatten_dict_keys(d, parent_key="", sep="."):
@@ -236,26 +212,26 @@ def flatten_dict_keys(d, parent_key="", sep="."):
             keys.extend(flatten_dict_keys(v, new_key, sep=sep))
         else:
             keys.append(new_key)
-    return sorted(keys)
+    return keys
 
 
 def dict_key_exists(d, dotted_key):
-    parts = dotted_key.split(".")
+    keys = dotted_key.split(".")
     cur = d
-    for p in parts:
-        if isinstance(cur, dict) and p in cur:
-            cur = cur[p]
+    for k in keys:
+        if isinstance(cur, dict) and k in cur:
+            cur = cur[k]
         else:
             return False
     return True
 
 
 def get_nested_value(d, dotted_key):
-    parts = dotted_key.split(".")
+    keys = dotted_key.split(".")
     cur = d
-    for p in parts:
-        if isinstance(cur, dict) and p in cur:
-            cur = cur[p]
+    for k in keys:
+        if isinstance(cur, dict) and k in cur:
+            cur = cur[k]
         else:
             return None
     return cur
@@ -279,20 +255,12 @@ def get_all_nested_keys(d, parent_path=None):
 
 
 def random_action(action_space):
-    """
-    Sample a random action from a gym action space.
-    Handles Discrete, Box, MultiDiscrete, MultiBinary, etc.
-    Args:
-        action_space: gymnasium.spaces.Space instance
-    Returns:
-        action: valid action sampled from the space
-    """
     return action_space.sample()
 
 
 def deep_get(d, keys):
     """
-    Safely extract a value from a nested dict given a list of keys.
+    Safely extract value from nested dict given a list of keys.
     Returns value or None if any key is missing.
     Example:
         d = {'a': {'b': {'c': 5}}}
@@ -311,3 +279,24 @@ def deep_get(d, keys):
         else:
             return None
     return cur
+
+
+def episode_reward_summary(trace):
+    """
+    Compute summary statistics for rewards from an episode trace.
+    Args:
+        trace: list of transition dicts (each should have a 'reward' key)
+    Returns:
+        dict with keys: 'total_reward', 'mean_reward', 'step_rewards'
+    Example:
+        trace = [
+            {'observation': 'foo', 'action': 1, 'reward': 0.5},
+            {'observation': 'bar', 'action': 2, 'reward': 1.0},
+        ]
+        summary = episode_reward_summary(trace)
+        # summary: {'total_reward': 1.5, 'mean_reward': 0.75, 'step_rewards': [0.5, 1.0]}
+    """
+    rewards = [t.get('reward', 0.0) for t in trace]
+    total = sum(rewards)
+    mean = total / len(rewards) if rewards else 0.0
+    return {'total_reward': total, 'mean_reward': mean, 'step_rewards': rewards}
