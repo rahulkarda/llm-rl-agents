@@ -137,44 +137,57 @@ class DeterministicAgent(Agent):
         elif hasattr(self.action_space, 'low'):
             low = getattr(self.action_space, 'low', None)
             if low is None:
-                raise TypeError("action_space does not have 'low' attribute (not Box)")
+                raise TypeError("action_space has no 'low' attribute (not Box)")
             action = low
             self.step()
             return action
         else:
-            raise NotImplementedError("DeterministicAgent only supports Discrete and Box action spaces.")
+            raise NotImplementedError("action_space type not supported for DeterministicAgent")
 
-    def set_fixed_action_index(self, idx):
+    def set_fixed_action_index(self, idx: int):
         self.fixed_action_index = idx
 
 
 class GreedyGridAgent(Agent):
     """
     Heuristic agent for SimpleGridWorldEnv.
-    Moves toward goal using Manhattan distance, preferring east before south.
+    Moves toward goal with minimum Manhattan distance.
+    Tie-break: prefers east before south for more direct pursuit.
+    Action mapping:
+        0 = north
+        1 = south
+        2 = east
+        3 = west
     """
     def __init__(self, action_space):
         super().__init__()
         self.action_space = action_space
 
     def act(self, observation: Any) -> Any:
-        # Observation: text with position and grid info
+        # Parse position and goal from observation string
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
         if pos is None or goal is None:
-            return self.action_space.sample()  # fallback
+            # Fallback: random action
+            action = self.action_space.sample()
+            self.step()
+            return action
         x, y = pos
         gx, gy = goal
-        if x < gx:
-            action = 1  # south
-        elif y < gy:
+        dx = gx - x
+        dy = gy - y
+        # Prefer east (dy > 0) before south (dx > 0), then north, then west
+        if dy > 0:
             action = 2  # east
-        elif y > gy:
-            action = 3  # west
-        elif x > gx:
+        elif dx > 0:
+            action = 1  # south
+        elif dx < 0:
             action = 0  # north
+        elif dy < 0:
+            action = 3  # west
         else:
-            action = self.action_space.sample()  # already at goal, random action
+            # Already at goal, pick random action
+            action = self.action_space.sample()
         self.step()
         return action
 
@@ -191,4 +204,3 @@ class GreedyGridAgent(Agent):
         if m:
             return int(m.group(1)), int(m.group(2))
         return None
-
