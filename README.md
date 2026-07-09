@@ -46,6 +46,28 @@ action = agent.act(observation)
 - For LLM-based policies, override `act()` to prompt the model and parse the action.
 - `reset()` can be overridden to clear internal state between episodes.
 
+### Grid world environment and heuristic agent example
+
+This repo includes a simple text-based grid world environment for agent testing (`src/grid_env.py`). Agents can be evaluated in this environment, including heuristic baselines like `GreedyGridAgent`.
+
+**Example usage:**
+```python
+from grid_env import SimpleGridWorldEnv
+from agent import GreedyGridAgent
+
+env = SimpleGridWorldEnv(grid_size=8, max_steps=100)
+agent = GreedyGridAgent(env.action_space)
+obs, info = env.reset()
+done = False
+while not done:
+    action = agent.act(obs)
+    obs, reward, done, truncated, info = env.step(action)
+    print(f"Step {info['step']}: {obs} | action={action} | reward={reward}")
+```
+- `GreedyGridAgent` moves toward the goal in the grid using simple heuristics.
+- Observation is always a string for easy LLM prompting and compatibility.
+- Action space: Discrete(4) (0=north, 1=south, 2=east, 3=west).
+
 ### EpisodeRecorder workflow
 
 1. Instantiate an `EpisodeRecorder` (optionally with `out_path`):
