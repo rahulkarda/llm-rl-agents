@@ -137,57 +137,96 @@ class DeterministicAgent(Agent):
         elif hasattr(self.action_space, 'low'):
             low = getattr(self.action_space, 'low', None)
             if low is None:
-                raise TypeError("action_space has no 'low' attribute (not Box)")
+                raise TypeError("action_space does not have 'low' attribute (not Box)")
             action = low
             self.step()
             return action
         else:
-            raise NotImplementedError("action_space type not supported for DeterministicAgent")
+            raise NotImplementedError("DeterministicAgent not implemented for this action space type")
 
     def set_fixed_action_index(self, idx: int):
+        """
+        Set the index for Discrete action spaces.
+        """
         self.fixed_action_index = idx
 
 
 class GreedyGridAgent(Agent):
     """
     Heuristic agent for SimpleGridWorldEnv.
-    Moves toward goal with minimum Manhattan distance.
-    Tie-break: prefers east before south for more direct pursuit.
+    Moves toward goal using Manhattan distance (north/south/east/west).
+    Tie-break preference (configurable): east > south > north > west (default).
+
     Action mapping:
-        0 = north
-        1 = south
-        2 = east
-        3 = west
+      0: north
+      1: south
+      2: east
+      3: west
+
+    On ties, agent prefers direction according to tie_break_order.
     """
-    def __init__(self, action_space):
+    def __init__(self, action_space, tie_break_order=None):
+        """
+        Args:
+            action_space: Discrete(4)
+            tie_break_order: Optional list of action indices for tie-break priority.
+                Defaults to [2, 1, 0, 3] (east, south, north, west).
+        """
         super().__init__()
         self.action_space = action_space
+        if tie_break_order is None:
+            # Default: east, then south, then north, then west
+            self.tie_break_order = [2, 1, 0, 3]
+        else:
+            self.tie_break_order = tie_break_order
 
     def act(self, observation: Any) -> Any:
-        # Parse position and goal from observation string
+        """
+        Parse observation string to extract agent position and goal position.
+        Move toward goal using Manhattan heuristic, tie-break as per order.
+        If parsing fails, fallback to random.
+        """
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
         if pos is None or goal is None:
-            # Fallback: random action
             action = self.action_space.sample()
             self.step()
             return action
         x, y = pos
         gx, gy = goal
+        moves = []
+        # Compute possible moves and their deltas
         dx = gx - x
         dy = gy - y
-        # Prefer east (dy > 0) before south (dx > 0), then north, then west
+        candidates = []
+        # North
+        if dy < 0:
+            candidates.append((0, abs(dy)))
+        # South
         if dy > 0:
-            action = 2  # east
-        elif dx > 0:
-            action = 1  # south
-        elif dx < 0:
-            action = 0  # north
-        elif dy < 0:
-            action = 3  # west
-        else:
-            # Already at goal, pick random action
+            candidates.append((1, abs(dy)))
+        # East
+        if dx > 0:
+            candidates.append((2, abs(dx)))
+        # West
+        if dx < 0:
+            candidates.append((3, abs(dx)))
+        # Pick those with max delta (closer to goal), then tie-break
+        if not candidates:
+            # At goal or unable to parse, fallback random
             action = self.action_space.sample()
+            self.step()
+            return action
+        max_delta = max(delta for _, delta in candidates)
+        best_dirs = [dir for dir, delta in candidates if delta == max_delta]
+        # Tie-break by configured order
+        for preferred in self.tie_break_order:
+            if preferred in best_dirs:
+                action = preferred
+                self.step()
+                return action
+        # Fallback
+        action = self.action_space.sample()
         self.step()
         return action
 
