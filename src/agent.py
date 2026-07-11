@@ -142,11 +142,11 @@ class DeterministicAgent(Agent):
             self.step()
             return action
         else:
-            raise NotImplementedError("DeterministicAgent not implemented for this action space type")
+            raise NotImplementedError("DeterministicAgent only supports Discrete and Box action spaces")
 
     def set_fixed_action_index(self, idx: int):
         """
-        Set the index for Discrete action spaces.
+        For Discrete action spaces, set which action index to use.
         """
         self.fixed_action_index = idx
 
@@ -154,37 +154,18 @@ class DeterministicAgent(Agent):
 class GreedyGridAgent(Agent):
     """
     Heuristic agent for SimpleGridWorldEnv.
-    Moves toward goal using Manhattan distance (north/south/east/west).
-    Tie-break preference (configurable): east > south > north > west (default).
-
-    Action mapping:
-      0: north
-      1: south
-      2: east
-      3: west
-
-    On ties, agent prefers direction according to tie_break_order.
+    Moves toward goal by minimizing Manhattan distance.
+    Tie-break: prefer east, then north, then south, then west.
     """
-    def __init__(self, action_space, tie_break_order=None):
-        """
-        Args:
-            action_space: Discrete(4)
-            tie_break_order: Optional list of action indices for tie-break priority.
-                Defaults to [2, 1, 0, 3] (east, south, north, west).
-        """
+    def __init__(self, action_space):
         super().__init__()
         self.action_space = action_space
-        if tie_break_order is None:
-            # Default: east, then south, then north, then west
-            self.tie_break_order = [2, 1, 0, 3]
-        else:
-            self.tie_break_order = tie_break_order
 
     def act(self, observation: Any) -> Any:
         """
-        Parse observation string to extract agent position and goal position.
-        Move toward goal using Manhattan heuristic, tie-break as per order.
-        If parsing fails, fallback to random.
+        Observation is string: 'You are at position (x, y). Goal is at (gx, gy).'
+        Action space: Discrete(4) (0=north, 1=south, 2=east, 3=west)
+        Returns action moving toward goal (east > north > south > west).
         """
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
@@ -194,38 +175,30 @@ class GreedyGridAgent(Agent):
             return action
         x, y = pos
         gx, gy = goal
-        moves = []
-        # Compute possible moves and their deltas
         dx = gx - x
         dy = gy - y
         candidates = []
-        # North
-        if dy < 0:
-            candidates.append((0, abs(dy)))
-        # South
-        if dy > 0:
-            candidates.append((1, abs(dy)))
-        # East
-        if dx > 0:
-            candidates.append((2, abs(dx)))
-        # West
-        if dx < 0:
-            candidates.append((3, abs(dx)))
-        # Pick those with max delta (closer to goal), then tie-break
-        if not candidates:
-            # At goal or unable to parse, fallback random
-            action = self.action_space.sample()
-            self.step()
-            return action
-        max_delta = max(delta for _, delta in candidates)
-        best_dirs = [dir for dir, delta in candidates if delta == max_delta]
-        # Tie-break by configured order
-        for preferred in self.tie_break_order:
-            if preferred in best_dirs:
-                action = preferred
+        # Build candidate moves with Manhattan distance
+        moves = {
+            0: (x, y + 1),   # north
+            1: (x, y - 1),   # south
+            2: (x + 1, y),   # east
+            3: (x - 1, y),   # west
+        }
+        for a, (nx, ny) in moves.items():
+            dist = abs(gx - nx) + abs(gy - ny)
+            candidates.append((dist, a))
+        candidates.sort()  # ascending by dist
+        min_dist = candidates[0][0]
+        best_actions = [a for dist, a in candidates if dist == min_dist]
+        # Tie-break order: east, north, south, west
+        tie_break_order = [2, 0, 1, 3]
+        for tb in tie_break_order:
+            if tb in best_actions:
+                action = tb
                 self.step()
                 return action
-        # Fallback
+        # Fallback if something went wrong
         action = self.action_space.sample()
         self.step()
         return action
