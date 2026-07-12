@@ -57,16 +57,16 @@ def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=No
         env = env_fn()
         obs, _ = env.reset()
         done = False
+        truncated = False
         total_reward = 0.0
         info = {}
         # Use agent for even, baseline for odd episodes
         current_agent = agent if (baseline is None or ep % 2 == 0) else baseline
         current_agent.reset()  # Ensure agent state is reset before episode
-        while not done:
+        while not (done or truncated):
             action = current_agent.act(obs)
             obs, reward, done, truncated, info = env.step(action)
             total_reward += reward
-            done = done or truncated  # fix: episode ends if either is True
         # Determine win
         if win_criteria:
             won = win_criteria(info)
@@ -105,12 +105,12 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
         env = env_fn()
         obs, _ = env.reset()
         done = False
+        truncated = False
         transitions = []
         agent.reset()  # Ensure agent state is reset before episode
-        while not done:
+        while not (done or truncated):
             action = agent.act(obs)
             obs2, reward, done, truncated, info = env.step(action)
-            done = done or truncated  # fix: episode ends if either is True
             transition = {
                 "observation": obs,
                 "action": action,
@@ -119,10 +119,10 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
             }
             transitions.append(transition)
             obs = obs2
-        cost = compute_episode_cost(transitions, cost_keys=cost_keys)
-        episode_costs.append(cost)
+        total_cost = compute_episode_cost(transitions, cost_keys)
+        episode_costs.append(total_cost)
         env.close()
-    avg_cost = sum(episode_costs) / episodes if episodes > 0 else 0.0
+    avg_cost = sum(episode_costs) / len(episode_costs) if episode_costs else 0.0
     return {
         "avg_cost": avg_cost,
         "episode_costs": episode_costs,
@@ -132,53 +132,51 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
 
 def compare_traces_side_by_side(trace_a, trace_b, keys=None):
     """
-    Stepwise comparison of two episode traces.
+    Compare two episode traces step-wise, showing differences for selected keys.
     Args:
-        trace_a: list of transition dicts (from episode A)
-        trace_b: list of transition dicts (from episode B)
-        keys: list of keys to extract from each transition (default: all flat keys from both traces)
+        trace_a: List of transition dicts (episode A).
+        trace_b: List of transition dicts (episode B).
+        keys: List of keys to compare (optional). If None, uses union of keys from both traces.
     Returns:
-        List of dicts for each step:
-            {
-                'step': step_idx,
-                'a': {key: value},
-                'b': {key: value},
-                'diff': {key: True/False (changed)}
-            }
+        List of dicts per step: {step, a, b, diff}
     """
-    # Compute max steps
     max_steps = max(len(trace_a), len(trace_b))
-    # Compute keys if not provided
-    if keys is None:
-        # Get all flat keys from both traces
-        all_keys = set()
-        for t in trace_a:
-            all_keys.update(flatten_dict_keys(t))
-        for t in trace_b:
-            all_keys.update(flatten_dict_keys(t))
-        keys = sorted(all_keys)
-    steps = []
+    step_comparisons = []
     for i in range(max_steps):
-        ta = trace_a[i] if i < len(trace_a) else {}
-        tb = trace_b[i] if i < len(trace_b) else {}
-        # Flatten each transition
-        flat_a = {k: get_nested_value(ta, k) for k in keys}
-        flat_b = {k: get_nested_value(tb, k) for k in keys}
-        # Diff: True if values differ
-        diff = {k: flat_a[k] != flat_b[k] for k in keys}
-        steps.append({
-            "step": i,
-            "a": flat_a,
-            "b": flat_b,
-            "diff": diff
-        })
-    return steps
+        a = trace_a[i] if i < len(trace_a) else None
+        b = trace_b[i] if i < len(trace_b) else None
+        if keys is None:
+            keys_a = flatten_dict_keys(a) if a else []
+            keys_b = flatten_dict_keys(b) if b else []
+            all_keys = sorted(set(keys_a) | set(keys_b))
+        else:
+            all_keys = keys
+        step_cmp = {"step": i, "a": {}, "b": {}, "diff": {}}
+        for k in all_keys:
+            val_a = None
+            val_b = None
+            if a is not None:
+                if "." in k:
+                    # Nested key
+                    from utils import get_nested_value
+                    val_a = get_nested_value(a, k)
+                else:
+                    val_a = a.get(k, None)
+            if b is not None:
+                if "." in k:
+                    from utils import get_nested_value
+                    val_b = get_nested_value(b, k)
+                else:
+                    val_b = b.get(k, None)
+            step_cmp["a"][k] = val_a
+            step_cmp["b"][k] = val_b
+            if val_a != val_b:
+                step_cmp["diff"][k] = {"a": val_a, "b": val_b}
+        step_comparisons.append(step_cmp)
+    return step_comparisons
 
-# Helper: get_nested_value (dotted keys)
-from utils import get_nested_value
-
-# Example usage for manual testing
 if __name__ == "__main__":
+    # Example test run
     trace_a = [
         {"observation": "state1", "action": 0, "reward": 0.5},
         {"observation": "state2", "action": 1, "reward": 0.0},
