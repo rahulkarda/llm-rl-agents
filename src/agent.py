@@ -119,7 +119,7 @@ class DeterministicAgent(Agent):
 
 class GreedyGridAgent(Agent):
     """
-    Heuristic agent for SimpleGridWorldEnv: moves toward goal with tie-break preference (east, then north).
+    Heuristic agent for SimpleGridWorldEnv: moves toward goal with tie-break preference (east, then south).
     Observation must be a string encoding position and goal.
     """
     def __init__(self, action_space):
@@ -138,17 +138,15 @@ class GreedyGridAgent(Agent):
         gx, gy = goal
         dx = gx - x
         dy = gy - y
-        # Prefer east if dx > 0, west if dx < 0; north if dy < 0, south if dy > 0
-        if dx != 0:
-            if dx > 0:
-                action = 2  # east
-            else:
-                action = 3  # west
-        elif dy != 0:
-            if dy < 0:
-                action = 0  # north
-            else:
-                action = 1  # south
+        # Prefer east if dx > 0; prefer south if dy > 0; then west/north; else random
+        if dx > 0:
+            action = 2  # east
+        elif dy > 0:
+            action = 1  # south
+        elif dx < 0:
+            action = 3  # west
+        elif dy < 0:
+            action = 0  # north
         else:
             action = self.action_space.sample()
         self.step()
