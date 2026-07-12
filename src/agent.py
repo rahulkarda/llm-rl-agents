@@ -132,7 +132,7 @@ class GreedyGridAgent(Agent):
         goal = self._parse_goal(observation)
         if pos is None or goal is None:
             action = self.action_space.sample()
-            self.step()
+            # Do NOT call self.step() for fallback random action
             return action
         x, y = pos
         gx, gy = goal
@@ -149,6 +149,8 @@ class GreedyGridAgent(Agent):
             action = 0  # north
         else:
             action = self.action_space.sample()
+            # Do NOT call self.step() for fallback random action
+            return action
         self.step()
         return action
 
