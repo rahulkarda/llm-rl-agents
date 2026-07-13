@@ -26,10 +26,10 @@ class Agent(ABC):
 
     - Observe environment state, emit action via act(observation).
     - Optionally implement reset() to clear state between episodes.
-    - step_count tracks steps within current episode.
+    - step_count tracks number of actions taken in current episode.
     """
     def __init__(self):
-        self.step_count = 0  # Steps taken in current episode
+        self.step_count = 0  # Number of actions taken in current episode
 
     @abstractmethod
     def act(self, observation: Any) -> Any:
@@ -45,13 +45,13 @@ class Agent(ABC):
     def reset(self) -> None:
         """
         Called at episode start. Override to clear internal state if needed.
-        Resets step count.
+        Resets step_count to zero for new episode.
         """
         self.step_count = 0
 
     def step(self):
         """
-        Increment step count after each act(). Agents can use step_count for episode progress.
+        Call after each act() to increment step_count within current episode.
         """
         self.step_count += 1
 
@@ -115,6 +115,9 @@ class DeterministicAgent(Agent):
             raise NotImplementedError("DeterministicAgent only supports Discrete/Box action spaces or fixed_action")
 
     def set_fixed_action_index(self, index):
+        """
+        Set the action index for Discrete action spaces. Does not affect fixed_action.
+        """
         self.fixed_action_index = index
 
 class GreedyGridAgent(Agent):
@@ -132,7 +135,7 @@ class GreedyGridAgent(Agent):
         goal = self._parse_goal(observation)
         if pos is None or goal is None:
             action = self.action_space.sample()
-            # Do NOT call self.step() for fallback random action
+            # step_count not incremented for fallback random action
             return action
         x, y = pos
         gx, gy = goal
@@ -149,7 +152,7 @@ class GreedyGridAgent(Agent):
             action = 0  # north
         else:
             action = self.action_space.sample()
-            # Do NOT call self.step() for fallback random action
+            # step_count not incremented for fallback random action
             return action
         self.step()
         return action
