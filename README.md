@@ -95,6 +95,25 @@ while not done:
    print(summary)
    ```
 
+**Reward summary utility:**
+
+- Use `episode_reward_summary` from `src/utils.py` to summarize rewards across an episode trace.
+
+Example usage:
+```python
+from utils import episode_reward_summary
+
+# Suppose transitions is a list of dicts like:
+transitions = [
+    {"observation": "state1", "action": 0, "reward": 1.0},
+    {"observation": "state2", "action": 1, "reward": 0.5},
+    {"observation": "state3", "action": 2, "reward": -0.2},
+]
+summary = episode_reward_summary(transitions)
+print(summary)  # {'total_reward': 1.3, 'mean_reward': 0.433, 'step_rewards': [1.0, 0.5, -0.2]}
+```
+- This utility also works with episode traces loaded by the recorder.
+
 ### LLM Agent integration
 
 - Use `PromptedLLMAgent` from `src/llm_agent.py` to wrap a prompted OpenAI LLM as an RL agent.
@@ -115,8 +134,24 @@ action = agent.act(obs)
 - If parsing fails or invalid action is returned, agent falls back to random action.
 - Supports customizing system prompt and model (default: `gpt-3.5-turbo`).
 
+### Utilities: deep_get for nested dict extraction
+
+- Use `deep_get` from `src/utils.py` for robust extraction of values from nested dicts given a list of keys.
+
+Example usage:
+```python
+from utils import deep_get
+
+d = {'a': {'b': {'c': 5}}, 'x': {'y': 42}}
+val1 = deep_get(d, ['a', 'b', 'c'])   # 5
+val2 = deep_get(d, ['x', 'y'])        # 42
+val3 = deep_get(d, ['a', 'b', 'z'])   # None
+```
+- Useful for safely handling deeply nested info dicts or episode transitions.
+
 ## Design notes
 
 - All agent classes expose a unified `act(observation)` method for compatibility.
 - Recorder supports episode summary statistics and JSONL persistence for debugging and analysis.
 - The project targets classic RL environments (e.g., CartPole, grid games) as well as text-based tasks.
+
