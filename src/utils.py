@@ -25,6 +25,7 @@ Functions:
 - random_action: Sample a random action from a gym action space (added).
 - deep_get: Safely extract a value from a nested dict given a list of keys (added).
 - episode_reward_summary: Compute total, mean, and step-wise rewards from an episode trace (added).
+- nested_dict_update: Update nested dict values in-place given a mapping of dotted keys to values (added).
 
 Typical scenarios:
 - Agent logging: Use dict_to_str and flatten_dict to produce readable or flat logs of env info, episode traces, or transition dicts.
@@ -47,6 +48,7 @@ Typical scenarios:
 - random_action: For quick sampling of a valid action from any gym action space (added).
 - deep_get: For robust nested dict value extraction using explicit key path (added).
 - episode_reward_summary: For summarizing rewards from episode traces (added).
+- nested_dict_update: For in-place update of nested dicts from dotted-key mapping (added).
 
 Concrete usage examples:
     # Flatten a nested dict
@@ -81,18 +83,38 @@ Concrete usage examples:
 
     # Deep merge dicts
     d1 = {'a': 1, 'b': {'c': 2}}
-    d2 = {'b': {'d': 3}, '...
+    d2 = {'b': {'d': 3}, 'f': 4}
+    merged = deep_merge_dicts(d1, d2)
+    # merged: {'a': 1, 'b': {'c': 2, 'd': 3}, 'f': 4}
+
+    # Chunk list
+    chunks = list_chunk([1,2,3,4,5], 2)
+    # chunks: [[1,2],[3,4],[5]]
+
+    # Compute episode cost
+    trace = [
+        {'info': {'cost': 1.2}},
+        {'info': {'cost': 1.8}},
+        {'info': {'cost': 0.5}},
+    ]
+    total = compute_episode_cost(trace, cost_keys=("cost",))
+    # total: 3.5
+
+    # Extract values for keys
+    vals = dict_values_to_list({'a': 1, 'b': 2}, ['a','b'])
+    # vals: [1,2]
+
+    # Update nested dict in-place
+    d = {'a': {'b': {'c': 1}}, 'x': 2}
+    nested_dict_update(d, {'a.b.c': 99, 'x': 5})
+    # d now: {'a': {'b': {'c': 99}}, 'x': 5}
 """
 import json
-import hashlib
 import copy
+import hashlib
 
-
+# --- flatten_dict ---
 def flatten_dict(d, parent_key='', sep='.'):
-    """
-    Flatten a nested dict using dotted keys.
-    Example: {'a': 1, 'b': {'c': 2}} -> {'a': 1, 'b.c': 2}
-    """
     items = {}
     for k, v in d.items():
         new_key = f"{parent_key}{sep}{k}" if parent_key else k
@@ -102,250 +124,189 @@ def flatten_dict(d, parent_key='', sep='.'):
             items[new_key] = v
     return items
 
-
+# --- dict_to_str ---
 def dict_to_str(d, indent=0):
-    """
-    Pretty-print a (possibly nested) dict for logging/debugging.
-    """
-    pad = '  ' * indent
     s = ''
+    ind = '  ' * indent
     if isinstance(d, dict):
         for k, v in d.items():
             if isinstance(v, dict):
-                s += f"{pad}{k}:\n{dict_to_str(v, indent=indent+1)}"
+                s += f"{ind}{k}:\n"
+                s += dict_to_str(v, indent=indent+1)
             else:
-                s += f"{pad}{k}: {v}\n"
+                s += f"{ind}{k}: {v}\n"
     else:
-        s += f"{pad}{d}\n"
+        s += f"{ind}{d}\n"
     return s
 
-
+# --- safe_json_parse ---
 def safe_json_parse(s):
-    """
-    Robustly parse JSON, returning None on failure.
-    """
     try:
         return json.loads(s)
     except Exception:
         return None
 
-
+# --- get_env_name ---
 def get_env_name(env):
-    """
-    Extract environment name (e.g. 'CartPole-v1') from gym env or spec.
-    """
     if hasattr(env, 'spec') and env.spec is not None:
-        return env.spec.id
-    if hasattr(env, 'unwrapped') and hasattr(env.unwrapped, 'spec'):
-        return env.unwrapped.spec.id
-    return str(type(env))
+        return getattr(env.spec, 'id', str(env.spec))
+    elif hasattr(env, 'unwrapped') and hasattr(env.unwrapped, 'spec'):
+        return getattr(env.unwrapped.spec, 'id', str(env.unwrapped.spec))
+    return str(env)
 
-
+# --- is_discrete_space ---
 def is_discrete_space(space):
-    """
-    Check if gym action space is discrete.
-    """
     return hasattr(space, 'n')
 
-
+# --- hash_dict ---
 def hash_dict(d):
-    """
-    Produce a stable hash for a dict (for caching/debugging).
-    """
-    s = json.dumps(d, sort_keys=True, default=str)
+    flat = flatten_dict(d)
+    s = json.dumps(flat, sort_keys=True)
     return hashlib.md5(s.encode()).hexdigest()
 
-
+# --- deep_copy_dict ---
 def deep_copy_dict(d):
-    """
-    Return a deep copy of a dict (for safe mutation).
-    """
     return copy.deepcopy(d)
 
-
-def pad_list(lst, length, fill=None):
-    """
-    Pad or truncate a list to a target length.
-    """
-    if len(lst) >= length:
+# --- pad_list ---
+def pad_list(lst, length, padding=None):
+    if len(lst) > length:
         return lst[:length]
-    return lst + [fill] * (length - len(lst))
+    return lst + [padding]*(length-len(lst))
 
-
+# --- dict_diff ---
 def dict_diff(a, b):
-    """
-    Compute the difference between two dicts (added, removed, changed keys).
-    Returns dict with keys 'added', 'removed', 'changed'.
-    """
     a_keys = set(a.keys())
     b_keys = set(b.keys())
     added = b_keys - a_keys
     removed = a_keys - b_keys
     changed = {k for k in a_keys & b_keys if a[k] != b[k]}
-    return {'added': added, 'removed': removed, 'changed': changed}
+    return {'added': list(added), 'removed': list(removed), 'changed': list(changed)}
 
-
+# --- filter_dict ---
 def filter_dict(d, keys):
-    """
-    Return a new dict containing only specified keys from input dict.
-    """
     return {k: d[k] for k in keys if k in d}
 
-
-def partition_dict(d, key_set):
-    """
-    Split a dict into two dicts based on a set of keys.
-    Returns (left, right).
-    """
-    left = {k: v for k, v in d.items() if k in key_set}
-    right = {k: v for k, v in d.items() if k not in key_set}
+# --- partition_dict ---
+def partition_dict(d, keys):
+    left = {k: d[k] for k in keys if k in d}
+    right = {k: d[k] for k in d if k not in keys}
     return left, right
 
-
+# --- deep_merge_dicts ---
 def deep_merge_dicts(a, b):
-    """
-    Recursively merge two nested dicts.
-    """
-    result = deep_copy_dict(a)
+    result = copy.deepcopy(a)
     for k, v in b.items():
         if k in result and isinstance(result[k], dict) and isinstance(v, dict):
             result[k] = deep_merge_dicts(result[k], v)
         else:
-            result[k] = v
+            result[k] = copy.deepcopy(v)
     return result
 
-
+# --- list_chunk ---
 def list_chunk(lst, chunk_size):
-    """
-    Split a list into chunks of given size.
-    """
     return [lst[i:i+chunk_size] for i in range(0, len(lst), chunk_size)]
 
-
+# --- compute_episode_cost ---
 def compute_episode_cost(trace, cost_keys=("cost", "api_cost")):
-    """
-    Compute total episode cost from transition trace.
-    Looks for keys in each transition or transition['info'].
-    """
     total = 0.0
     for t in trace:
-        for k in cost_keys:
-            if k in t:
-                total += t[k]
-            elif 'info' in t and isinstance(t['info'], dict) and k in t['info']:
-                total += t['info'][k]
+        info = t.get('info', t)
+        for key in cost_keys:
+            if isinstance(info, dict) and key in info:
+                try:
+                    total += float(info[key])
+                except Exception:
+                    pass
     return total
 
-
+# --- dict_values_to_list ---
 def dict_values_to_list(d, keys):
-    """
-    Convert values of dict for specified keys to a list.
-    """
     return [d.get(k, None) for k in keys]
 
+# --- flatten_dict_keys ---
+def flatten_dict_keys(d, sep='.'):  # Returns dotted keys
+    return list(flatten_dict(d, sep=sep).keys())
 
-def flatten_dict_keys(d, parent_key='', sep='.'):  # returns list of dotted keys
-    """
-    Extract all flat (dotted) keys from a nested dict.
-    Example: {'b': {'c': 2, 'd': {'e': 3}}} -> ['b.c', 'b.d.e']
-    """
-    keys = []
-    for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k
-        if isinstance(v, dict):
-            keys.extend(flatten_dict_keys(v, new_key, sep=sep))
-        else:
-            keys.append(new_key)
-    return keys
-
-
-def dict_key_exists(d, dotted_key):
-    """
-    Check if a dotted/nested key exists in dict.
-    Example: dict_key_exists({'a': {'b': 2}}, 'a.b') -> True
-    """
-    keys = dotted_key.split('.')
-    cur = d
+# --- dict_key_exists ---
+def dict_key_exists(d, dotted_key, sep='.'):  # Checks nested key
+    keys = dotted_key.split(sep)
+    curr = d
     for k in keys:
-        if isinstance(cur, dict) and k in cur:
-            cur = cur[k]
+        if isinstance(curr, dict) and k in curr:
+            curr = curr[k]
         else:
             return False
     return True
 
-
-def get_nested_value(d, dotted_key):
-    """
-    Extract value from nested dict by dotted key.
-    Example: get_nested_value({'a': {'b': 2}}, 'a.b') -> 2
-    Returns None if any intermediate key is missing.
-    """
-    keys = dotted_key.split('.')
-    cur = d
+# --- get_nested_value ---
+def get_nested_value(d, dotted_key, sep='.'):  # Returns value or None
+    keys = dotted_key.split(sep)
+    curr = d
     for k in keys:
-        if isinstance(cur, dict) and k in cur:
-            cur = cur[k]
+        if isinstance(curr, dict) and k in curr:
+            curr = curr[k]
         else:
             return None
-    return cur
+    return curr
 
+# --- extract_keys_from_dict ---
+def extract_keys_from_dict(d, dotted_keys, sep='.'):  # Returns list of values
+    return [get_nested_value(d, k, sep=sep) for k in dotted_keys]
 
-def extract_keys_from_dict(d, dotted_keys):
-    """
-    Extract values for a list of dotted keys from nested dicts.
-    Returns list of values (or None for missing).
-    """
-    return [get_nested_value(d, k) for k in dotted_keys]
-
-
-def get_all_nested_keys(d, prefix=None):
-    """
-    Recursively enumerate all nested keys in a dict as lists of path elements.
-    Example: {'a': {'b': 2}, 'c': 3} -> [['a', 'b'], ['c']]
-    """
-    keys = []
-    for k, v in d.items():
-        path = prefix + [k] if prefix else [k]
-        if isinstance(v, dict):
-            keys.extend(get_all_nested_keys(v, path))
+# --- get_all_nested_keys ---
+def get_all_nested_keys(d):
+    def _walk(obj, path):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                yield from _walk(v, path + [k])
         else:
-            keys.append(path)
-    return keys
+            yield path
+    return list(_walk(d, []))
 
+# --- random_action ---
+def random_action(space):
+    return space.sample()
 
-def random_action(action_space):
-    """
-    Sample a random action from a gym action space.
-    """
-    return action_space.sample()
-
-
-def deep_get(d, keys):
-    """
-    Safely extract a value from a nested dict given a list of keys.
-    Returns None if any key is missing.
-    """
-    cur = d
+# --- deep_get ---
+def deep_get(d, keys):  # keys: list[str]
+    curr = d
     for k in keys:
-        if isinstance(cur, dict) and k in cur:
-            cur = cur[k]
+        if isinstance(curr, dict) and k in curr:
+            curr = curr[k]
         else:
             return None
-    return cur
+    return curr
 
-
+# --- episode_reward_summary ---
 def episode_reward_summary(trace):
     """
-    Compute total, mean, and step-wise rewards from an episode trace.
-    Example:
-        trace = [
-            {'observation': 'foo', 'action': 1, 'reward': 0.5},
-            {'observation': 'bar', 'action': 2, 'reward': 1.0},
-        ]
-        summary = episode_reward_summary(trace)
-        # summary: {'total_reward': 1.5, 'mean_reward': 0.75, 'step_rewards': [0.5, 1.0]}
+    Compute reward summary for episode trace (list of dicts).
+    Returns dict: {'total_reward', 'mean_reward', 'step_rewards'}
     """
     rewards = [t.get('reward', 0.0) for t in trace]
     total = sum(rewards)
     mean = total / len(rewards) if rewards else 0.0
     return {'total_reward': total, 'mean_reward': mean, 'step_rewards': rewards}
+
+# --- nested_dict_update ---
+def nested_dict_update(d, updates, sep='.'):
+    """
+    Update nested dict 'd' in-place given mapping 'updates' of dotted keys to values.
+    Args:
+        d: dict to update
+        updates: dict, mapping dotted keys (e.g. 'a.b.c') to values
+        sep: separator for key paths (default '.')
+    Example:
+        d = {'a': {'b': {'c': 1}}, 'x': 2}
+        nested_dict_update(d, {'a.b.c': 99, 'x': 5})
+        # d now: {'a': {'b': {'c': 99}}, 'x': 5}
+    """
+    for dotted_key, value in updates.items():
+        keys = dotted_key.split(sep)
+        curr = d
+        for k in keys[:-1]:
+            if k not in curr or not isinstance(curr[k], dict):
+                curr[k] = {}
+            curr = curr[k]
+        curr[keys[-1]] = value
