@@ -53,6 +53,8 @@ def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=No
     """
     agent_wins = 0
     baseline_wins = 0
+    agent_episodes = 0
+    baseline_episodes = 0
     for ep in range(episodes):
         env = env_fn()
         obs, _ = env.reset()
@@ -75,11 +77,13 @@ def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=No
             won = total_reward > 0.99
         if current_agent is agent:
             agent_wins += int(won)
+            agent_episodes += 1
         else:
             baseline_wins += int(won)
+            baseline_episodes += 1
         env.close()
-    agent_win_rate = agent_wins / episodes
-    baseline_win_rate = baseline_wins / episodes if baseline else None
+    agent_win_rate = agent_wins / agent_episodes if agent_episodes > 0 else 0.0
+    baseline_win_rate = baseline_wins / baseline_episodes if baseline and baseline_episodes > 0 else None
     return {
         "agent_win_rate": agent_win_rate,
         "baseline_win_rate": baseline_win_rate,
@@ -115,12 +119,12 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
                 "observation": obs,
                 "action": action,
                 "reward": reward,
-                "info": info
+                "info": info,
             }
             transitions.append(transition)
             obs = obs2
-        total_cost = compute_episode_cost(transitions, cost_keys)
-        episode_costs.append(total_cost)
+        cost = compute_episode_cost(transitions, cost_keys=cost_keys)
+        episode_costs.append(cost)
         env.close()
     avg_cost = sum(episode_costs) / len(episode_costs) if episode_costs else 0.0
     return {
@@ -132,62 +136,23 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
 
 def compare_traces_side_by_side(trace_a, trace_b, keys=None):
     """
-    Compare two episode traces step-wise, showing differences for selected keys.
+    Compare two episode traces step-wise for selected keys (diff).
     Args:
-        trace_a: List of transition dicts (episode A).
-        trace_b: List of transition dicts (episode B).
-        keys: List of keys to compare (optional). If None, uses union of keys from both traces.
+        trace_a: List of transition dicts for agent A.
+        trace_b: List of transition dicts for agent B.
+        keys: List of keys to compare (default: ['observation', 'action', 'reward']).
     Returns:
-        List of dicts per step: {step, a, b, diff}
+        List of dicts with step-wise comparison: {'step': i, 'a': dict, 'b': dict, 'diff': dict}
     """
+    if keys is None:
+        keys = ["observation", "action", "reward"]
     max_steps = max(len(trace_a), len(trace_b))
-    step_comparisons = []
+    comparison = []
     for i in range(max_steps):
-        a = trace_a[i] if i < len(trace_a) else None
-        b = trace_b[i] if i < len(trace_b) else None
-        if keys is None:
-            keys_a = flatten_dict_keys(a) if a else []
-            keys_b = flatten_dict_keys(b) if b else []
-            all_keys = sorted(set(keys_a) | set(keys_b))
-        else:
-            all_keys = keys
-        step_cmp = {"step": i, "a": {}, "b": {}, "diff": {}}
-        for k in all_keys:
-            val_a = None
-            val_b = None
-            if a is not None:
-                if "." in k:
-                    # Nested key
-                    from utils import get_nested_value
-                    val_a = get_nested_value(a, k)
-                else:
-                    val_a = a.get(k, None)
-            if b is not None:
-                if "." in k:
-                    from utils import get_nested_value
-                    val_b = get_nested_value(b, k)
-                else:
-                    val_b = b.get(k, None)
-            step_cmp["a"][k] = val_a
-            step_cmp["b"][k] = val_b
-            if val_a != val_b:
-                step_cmp["diff"][k] = {"a": val_a, "b": val_b}
-        step_comparisons.append(step_cmp)
-    return step_comparisons
-
-if __name__ == "__main__":
-    # Example test run
-    trace_a = [
-        {"observation": "state1", "action": 0, "reward": 0.5},
-        {"observation": "state2", "action": 1, "reward": 0.0},
-    ]
-    trace_b = [
-        {"observation": "state1", "action": 0, "reward": 0.5},
-        {"observation": "state2", "action": 2, "reward": 1.0},
-    ]
-    comparison = compare_traces_side_by_side(trace_a, trace_b, keys=["observation", "action", "reward"])
-    for step_cmp in comparison:
-        print(f"Step {step_cmp['step']}:")
-        print("  A:", step_cmp['a'])
-        print("  B:", step_cmp['b'])
-        print("  Diff:", step_cmp['diff'])
+        a_dict = trace_a[i] if i < len(trace_a) else {}
+        b_dict = trace_b[i] if i < len(trace_b) else {}
+        a_vals = {k: a_dict.get(k, None) for k in keys}
+        b_vals = {k: b_dict.get(k, None) for k in keys}
+        diff = {k: (a_vals[k] != b_vals[k]) for k in keys}
+        comparison.append({"step": i, "a": a_vals, "b": b_vals, "diff": diff})
+    return comparison
