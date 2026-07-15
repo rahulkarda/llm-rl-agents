@@ -70,7 +70,7 @@ class RandomAgent(Agent):
 
 class DeterministicAgent(Agent):
     """
-    Always returns a fixed action, or lowest/default for the action space.
+    Always returns a fixed action, or default for the action space.
 
     - If fixed_action is set, always returns it.
     - For Discrete: returns fixed_action_index (default 0).
@@ -85,16 +85,15 @@ class DeterministicAgent(Agent):
             assert self.action_space.contains(fixed_action), "fixed_action not in action_space"
 
     def act(self, observation: Any) -> Any:
+        # Highest priority: fixed_action
         if self.fixed_action is not None:
             action = self.fixed_action
             self.step()
             return action
-        # Discrete action space: has 'n' attribute
+        # Discrete action space
         if hasattr(self.action_space, 'n'):
-            n = getattr(self.action_space, 'n', None)
+            n = self.action_space.n
             idx = self.fixed_action_index
-            if n is None:
-                raise TypeError("action_space does not have 'n' attribute (not Discrete)")
             if not isinstance(idx, int):
                 raise TypeError(f"fixed_action_index {idx} is not an integer")
             if 0 <= idx < n:
@@ -103,12 +102,9 @@ class DeterministicAgent(Agent):
                 return action
             else:
                 raise ValueError(f"fixed_action_index {idx} out of bounds for Discrete(n={n})")
-        # Box action space: has 'low' attribute
+        # Box action space
         elif hasattr(self.action_space, 'low'):
-            low = getattr(self.action_space, 'low', None)
-            if low is None:
-                raise TypeError("action_space.low not found (not Box)")
-            action = low
+            action = self.action_space.low
             self.step()
             return action
         else:
