@@ -126,7 +126,6 @@ class GreedyGridAgent(Agent):
         self.action_space = action_space
 
     def act(self, observation: Any) -> Any:
-        # Parse position and goal from observation string
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
         if pos is None or goal is None:
@@ -137,7 +136,9 @@ class GreedyGridAgent(Agent):
         gx, gy = goal
         dx = gx - x
         dy = gy - y
-        # Prefer east if dx > 0; prefer south if dy > 0; then west/north; else random
+
+        # Refactored tie-break logic for clarity
+        # Try east, then south, then west, then north, else random
         if dx > 0:
             action = 2  # east
         elif dy > 0:
@@ -147,8 +148,8 @@ class GreedyGridAgent(Agent):
         elif dy < 0:
             action = 0  # north
         else:
+            # Already at goal: fallback random (shouldn't happen)
             action = self.action_space.sample()
-            # step_count not incremented for fallback random action
             return action
         self.step()
         return action
@@ -164,3 +165,4 @@ class GreedyGridAgent(Agent):
         if m:
             return int(m.group(1)), int(m.group(2))
         return None
+
