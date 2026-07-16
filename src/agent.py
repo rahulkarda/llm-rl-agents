@@ -132,38 +132,57 @@ class DeterministicAgent(Agent):
 class GreedyGridAgent(Agent):
     """
     Heuristic agent for SimpleGridWorldEnv: moves toward goal with tie-break preference (east, then south).
+    Optionally supports diagonal move preference if diagonal_preference=True.
     Observation must be a string encoding position and goal.
     """
-    def __init__(self, action_space):
+    def __init__(self, action_space, diagonal_preference=False):
         super().__init__()
         self.action_space = action_space
+        self.diagonal_preference = diagonal_preference
 
     def act(self, observation: Any) -> Any:
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
-        if pos is None or goal is None:
+        if not pos or not goal:
             action = self.action_space.sample()
-            # step_count not incremented for fallback random action
             return action
         x, y = pos
         gx, gy = goal
         dx = gx - x
         dy = gy - y
-
-        # Refactored tie-break logic for clarity
-        # Try east, then south, then west, then north, else random
-        if dx > 0:
-            action = 2  # east
-        elif dy > 0:
-            action = 1  # south
-        elif dx < 0:
-            action = 3  # west
-        elif dy < 0:
-            action = 0  # north
+        # Discrete(4): 0=north, 1=south, 2=east, 3=west
+        # Diagonal preference: If both dx and dy are nonzero, alternate east/north or east/south
+        if self.diagonal_preference and dx != 0 and dy != 0:
+            # Prefer east+south if goal is southeast, east+north if northeast, etc.
+            if abs(dx) > abs(dy):
+                # Move along x axis
+                action = 2 if dx > 0 else 3
+            else:
+                # Move along y axis
+                action = 1 if dy > 0 else 0
         else:
-            # Already at goal: fallback random (shouldn't happen)
-            action = self.action_space.sample()
-            return action
+            if dx > 0 and dy == 0:
+                action = 2  # east
+            elif dx < 0 and dy == 0:
+                action = 3  # west
+            elif dy > 0 and dx == 0:
+                action = 1  # south
+            elif dy < 0 and dx == 0:
+                action = 0  # north
+            elif dx > 0 and dy > 0:
+                # Prefer east, then south
+                action = 2  # east
+            elif dx > 0 and dy < 0:
+                # Prefer east, then north
+                action = 2  # east
+            elif dx < 0 and dy > 0:
+                # Prefer west, then south
+                action = 3  # west
+            elif dx < 0 and dy < 0:
+                # Prefer west, then north
+                action = 3  # west
+            else:
+                action = self.action_space.sample()
         self.step()
         return action
 
@@ -178,4 +197,3 @@ class GreedyGridAgent(Agent):
         if m:
             return int(m.group(1)), int(m.group(2))
         return None
-
