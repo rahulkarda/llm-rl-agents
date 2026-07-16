@@ -81,6 +81,7 @@ class DeterministicAgent(Agent):
         self.action_space = action_space
         self.fixed_action = fixed_action
         self.fixed_action_index = 0  # Default for Discrete
+        self.fixed_box_action = None  # New: For Box action space
         if fixed_action is not None:
             assert self.action_space.contains(fixed_action), "fixed_action not in action_space"
 
@@ -104,7 +105,10 @@ class DeterministicAgent(Agent):
                 raise ValueError(f"fixed_action_index {idx} out of bounds for Discrete(n={n})")
         # Box action space
         elif hasattr(self.action_space, 'low'):
-            action = self.action_space.low
+            if self.fixed_box_action is not None:
+                action = self.fixed_box_action
+            else:
+                action = self.action_space.low
             self.step()
             return action
         else:
@@ -115,6 +119,15 @@ class DeterministicAgent(Agent):
         Set the action index for Discrete action spaces. Does not affect fixed_action.
         """
         self.fixed_action_index = index
+
+    def set_fixed_action(self, action):
+        """
+        Set the fixed action for Box action spaces (or any custom action).
+        Only used if fixed_action is None. Checks that action is valid for action_space.
+        """
+        if not self.action_space.contains(action):
+            raise ValueError(f"fixed_action {action} not in action_space")
+        self.fixed_box_action = action
 
 class GreedyGridAgent(Agent):
     """
