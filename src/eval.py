@@ -5,12 +5,14 @@ Functions:
 - evaluate_win_rate(agent, env_fn, episodes, baseline, win_criteria): Evaluate agent vs baseline win-rate on an env, using custom win criteria.
 - evaluate_cost_per_episode(agent, env_fn, episodes, cost_keys): Track average and per-episode cost (e.g., API usage) from episode traces.
 - compare_traces_side_by_side(trace_a, trace_b, keys=None): Compare two episode traces step-wise, showing differences for selected keys.
+- episode_reward_summary(trace): Compute total, mean, and step-wise rewards from an episode trace.
 
 Workflow:
 - Provide agent and env factory (env_fn: lambda returning env instance).
 - Optionally provide baseline agent and win_criteria (function taking info dict, returns bool).
 - For cost tracking, agent must propagate cost fields in info dicts during episode.
 - For trace comparison, provide two traces (lists of transition dicts).
+- For reward summary, provide a trace (list of dicts with 'reward' key).
 
 Example usage:
     import gymnasium as gym
@@ -26,6 +28,9 @@ Example usage:
     trace_b = [{"observation": "b", "action": 2, "reward": 0.7}]
     comparison = compare_traces_side_by_side(trace_a, trace_b)
     print(comparison)
+    # Compute reward summary
+    reward_summary = episode_reward_summary(trace_a)
+    print(reward_summary)
 
 Notes:
 - evaluate_win_rate alternates agent and baseline (if provided), else always agent.
@@ -33,6 +38,7 @@ Notes:
 - evaluate_cost_per_episode expects cost keys (default ("cost", "api_cost")) in info dicts.
 - Both functions return dicts with summary stats for downstream analysis.
 - compare_traces_side_by_side returns a list of dicts, each showing step-wise comparison for supplied keys.
+- episode_reward_summary returns dict with total, mean, and step-wise rewards.
 """
 import gymnasium as gym
 from agent import RandomAgent
@@ -114,15 +120,15 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
         agent.reset()  # Ensure agent state is reset before episode
         while not (done or truncated):
             action = agent.act(obs)
-            obs2, reward, done, truncated, info = env.step(action)
-            transition = {
+            obs, reward, done, truncated, info = env.step(action)
+            # Pack transition
+            trans = {
                 "observation": obs,
                 "action": action,
                 "reward": reward,
-                "info": info,
+                "info": info
             }
-            transitions.append(transition)
-            obs = obs2
+            transitions.append(trans)
         cost = compute_episode_cost(transitions, cost_keys=cost_keys)
         episode_costs.append(cost)
         env.close()
@@ -136,13 +142,13 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
 
 def compare_traces_side_by_side(trace_a, trace_b, keys=None):
     """
-    Compare two episode traces step-wise for selected keys (diff).
+    Compare two episode traces step-wise, showing differences for selected keys.
     Args:
-        trace_a: List of transition dicts for agent A.
-        trace_b: List of transition dicts for agent B.
+        trace_a: List of transition dicts.
+        trace_b: List of transition dicts.
         keys: List of keys to compare (default: ['observation', 'action', 'reward']).
     Returns:
-        List of dicts with step-wise comparison: {'step': i, 'a': dict, 'b': dict, 'diff': dict}
+        List of dicts with step-wise comparison.
     """
     if keys is None:
         keys = ["observation", "action", "reward"]
@@ -156,3 +162,25 @@ def compare_traces_side_by_side(trace_a, trace_b, keys=None):
         diff = {k: (a_vals[k] != b_vals[k]) for k in keys}
         comparison.append({"step": i, "a": a_vals, "b": b_vals, "diff": diff})
     return comparison
+
+
+def episode_reward_summary(trace):
+    """
+    Compute total, mean, and step-wise rewards from an episode trace.
+    Args:
+        trace: List of transition dicts (each with 'reward' key).
+    Returns:
+        dict with keys: 'total_reward', 'mean_reward', 'step_rewards'
+    """
+    step_rewards = []
+    for t in trace:
+        # Try t['reward'], else t.get('reward', 0.0)
+        r = t.get('reward', 0.0)
+        step_rewards.append(r)
+    total_reward = sum(step_rewards)
+    mean_reward = total_reward / len(step_rewards) if step_rewards else 0.0
+    return {
+        "total_reward": total_reward,
+        "mean_reward": mean_reward,
+        "step_rewards": step_rewards
+    }
