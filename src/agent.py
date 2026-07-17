@@ -145,42 +145,27 @@ class GreedyGridAgent(Agent):
         goal = self._parse_goal(observation)
         if not pos or not goal:
             action = self.action_space.sample()
+            self.step()
             return action
         x, y = pos
         gx, gy = goal
         dx = gx - x
         dy = gy - y
-        # Discrete(4): 0=north, 1=south, 2=east, 3=west
-        # Diagonal preference: If both dx and dy are nonzero, alternate east/north or east/south
+        # Diagonal preference: move east/south if both needed
         if self.diagonal_preference and dx != 0 and dy != 0:
-            # Prefer east+south if goal is southeast, east+north if northeast, etc.
-            if abs(dx) > abs(dy):
-                # Move along x axis
-                action = 2 if dx > 0 else 3
+            if abs(dx) >= abs(dy):
+                action = 2 if dx > 0 else 3  # east or west
             else:
-                # Move along y axis
-                action = 1 if dy > 0 else 0
+                action = 1 if dy > 0 else 0  # south or north
         else:
-            if dx > 0 and dy == 0:
+            if dx > 0:
                 action = 2  # east
-            elif dx < 0 and dy == 0:
+            elif dx < 0:
                 action = 3  # west
-            elif dy > 0 and dx == 0:
+            elif dy > 0:
                 action = 1  # south
-            elif dy < 0 and dx == 0:
+            elif dy < 0:
                 action = 0  # north
-            elif dx > 0 and dy > 0:
-                # Prefer east, then south
-                action = 2  # east
-            elif dx > 0 and dy < 0:
-                # Prefer east, then north
-                action = 2  # east
-            elif dx < 0 and dy > 0:
-                # Prefer west, then south
-                action = 3  # west
-            elif dx < 0 and dy < 0:
-                # Prefer west, then north
-                action = 3  # west
             else:
                 action = self.action_space.sample()
         self.step()
