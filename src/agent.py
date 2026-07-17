@@ -131,7 +131,7 @@ class DeterministicAgent(Agent):
 
 class GreedyGridAgent(Agent):
     """
-    Heuristic agent for SimpleGridWorldEnv: moves toward goal with tie-break preference (east, then south).
+    Heuristic agent for SimpleGridWorldEnv: moves toward goal with tie-break preference (east, then south, then north).
     Optionally supports diagonal move preference if diagonal_preference=True.
     Observation must be a string encoding position and goal.
     """
@@ -141,33 +141,41 @@ class GreedyGridAgent(Agent):
         self.diagonal_preference = diagonal_preference
 
     def act(self, observation: Any) -> Any:
+        # Parse observation string for position and goal
         pos = self._parse_position(observation)
         goal = self._parse_goal(observation)
-        if not pos or not goal:
+        if pos is None or goal is None:
             action = self.action_space.sample()
-            self.step()
-            return action
-        x, y = pos
-        gx, gy = goal
-        dx = gx - x
-        dy = gy - y
-        # Diagonal preference: move east/south if both needed
-        if self.diagonal_preference and dx != 0 and dy != 0:
-            if abs(dx) >= abs(dy):
-                action = 2 if dx > 0 else 3  # east or west
-            else:
-                action = 1 if dy > 0 else 0  # south or north
         else:
-            if dx > 0:
-                action = 2  # east
-            elif dx < 0:
-                action = 3  # west
-            elif dy > 0:
-                action = 1  # south
-            elif dy < 0:
-                action = 0  # north
+            x, y = pos
+            gx, gy = goal
+            dx = gx - x
+            dy = gy - y
+            # Diagonal preference: if both dx,dy != 0
+            if self.diagonal_preference and dx != 0 and dy != 0:
+                # Prefer east if dx>0, west if dx<0, else south/north
+                if abs(dx) >= abs(dy):
+                    if dx > 0:
+                        action = 2  # east
+                    else:
+                        action = 3  # west
+                else:
+                    if dy > 0:
+                        action = 1  # south
+                    else:
+                        action = 0  # north
             else:
-                action = self.action_space.sample()
+                # Tie-break: prefer east, then south, then north, else west
+                if dx > 0:
+                    action = 2  # east
+                elif dy > 0:
+                    action = 1  # south
+                elif dy < 0:
+                    action = 0  # north
+                elif dx < 0:
+                    action = 3  # west
+                else:
+                    action = self.action_space.sample()
         self.step()
         return action
 
