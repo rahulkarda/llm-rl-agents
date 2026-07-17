@@ -13,6 +13,12 @@ class Agent(ABC):
         - Subclass Agent and implement act(observation) -> action.
         - Optionally override reset() if agent maintains internal state.
         - Call reset() at start of each episode.
+    
+    Extension notes:
+        - The observation type is arbitrary and depends on the environment (e.g., array, dict, string).
+        - The action type must be compatible with the environment's action_space.
+        - Agents that keep internal state (e.g., counters, history) should override reset() to clear state between episodes.
+        - For stateless agents, reset() can be a no-op.
     """
     @abstractmethod
     def act(self, observation: Any) -> Any:
