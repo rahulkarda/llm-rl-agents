@@ -142,78 +142,83 @@ class GreedyGridAgent(Agent):
         self.diagonal_preference = diagonal_preference
 
     def act(self, observation: Any) -> Any:
-        obs_str = str(observation)
-        pos = self._parse_position(obs_str)
-        goal = self._parse_goal(obs_str)
-        obstacles = self._parse_obstacles(obs_str)
-        if pos is None or goal is None:
-            action = self.action_space.sample()
+        # Observation: 'pos=(x,y), goal=(gx,gy), obstacles=[(x1,y1), (x2,y2)]' (string)
+        pos, goal, obstacles = self._parse_observation(observation)
+        x, y = pos
+        gx, gy = goal
+        # Heuristic: move toward goal, avoid obstacles
+        possible_actions = [0, 1, 2, 3]  # north, south, east, west
+        dx = gx - x
+        dy = gy - y
+        # Tie-break preference: east, then south, then north
+        candidates = []
+        if self.diagonal_preference and dx != 0 and dy != 0:
+            # Prefer diagonal move toward goal
+            if dx > 0:
+                if dy > 0:
+                    candidates = [2, 1]  # east, south
+                elif dy < 0:
+                    candidates = [2, 0]  # east, north
+            elif dx < 0:
+                if dy > 0:
+                    candidates = [3, 1]  # west, south
+                elif dy < 0:
+                    candidates = [3, 0]  # west, north
         else:
-            x, y = pos
-            gx, gy = goal
-            move_candidates = []
-            # Diagonal preference
-            if self.diagonal_preference and x != gx and y != gy:
-                if gx > x and gy > y:
-                    move_candidates.append(2)  # east
-                    move_candidates.append(1)  # south
-                elif gx < x and gy < y:
-                    move_candidates.append(3)  # west
-                    move_candidates.append(0)  # north
-                elif gx > x and gy < y:
-                    move_candidates.append(2)  # east
-                    move_candidates.append(0)  # north
-                elif gx < x and gy > y:
-                    move_candidates.append(3)  # west
-                    move_candidates.append(1)  # south
-            # Normal axis-aligned moves
-            else:
-                if gx > x:
-                    move_candidates.append(2)  # east
-                elif gx < x:
-                    move_candidates.append(3)  # west
-                if gy > y:
-                    move_candidates.append(1)  # south
-                elif gy < y:
-                    move_candidates.append(0)  # north
-            # Tie-break order: east, south, north, west
+            # Prefer east, then south, then north, then west
+            if dx > 0:
+                candidates.append(2)
+            elif dx < 0:
+                candidates.append(3)
+            if dy > 0:
+                candidates.append(1)
+            elif dy < 0:
+                candidates.append(0)
+            # Fill remaining actions by tie-break: east, south, north, west
             for a in [2, 1, 0, 3]:
-                if a not in move_candidates:
-                    move_candidates.append(a)
-            # Try moves in order, avoid obstacles
-            action = None
-            for candidate in move_candidates:
-                nx, ny = self._next_position(x, y, candidate)
-                if obstacles is not None and (nx, ny) in obstacles:
-                    continue
-                action = candidate
-                break
-            if action is None:
-                action = self.action_space.sample()
-        self.step()
-        return action
+                if a not in candidates:
+                    candidates.append(a)
+        # Obstacle avoidance: skip actions that lead to obstacle
+        if obstacles:
+            for a in candidates:
+                nx, ny = self._next_position(x, y, a)
+                if (nx, ny) not in obstacles:
+                    action = a
+                    self.step()
+                    return action
+            # If all candidates blocked, pick random
+            action = self.action_space.sample()
+            self.step()
+            return action
+        else:
+            action = candidates[0] if candidates else self.action_space.sample()
+            self.step()
+            return action
 
-    def _parse_position(self, obs_str):
-        m = re.search(r"position \((\d+), (\d+)\)", obs_str)
-        if m:
-            return int(m.group(1)), int(m.group(2))
-        return None
+    def _parse_observation(self, obs_str):
+        # Example: 'pos=(1,2), goal=(5,8), obstacles=[(3,4), (2,2)]'
+        pos_match = re.search(r"pos=\((\d+),(\d+)\)", obs_str)
+        goal_match = re.search(r"goal=\((\d+),(\d+)\)", obs_str)
+        obstacles_match = re.search(r"obstacles=\[(.*?)\]", obs_str)
+        x, y = (0, 0)
+        gx, gy = (0, 0)
+        obstacles = []
+        if pos_match:
+            x, y = int(pos_match.group(1)), int(pos_match.group(2))
+        if goal_match:
+            gx, gy = int(goal_match.group(1)), int(goal_match.group(2))
+        if obstacles_match:
+            obstacles_str = obstacles_match.group(1)
+            obstacles = self._parse_obstacles(obstacles_str)
+        return (x, y), (gx, gy), obstacles
 
-    def _parse_goal(self, obs_str):
-        m = re.search(r"Goal is at \((\d+), (\d+)\)", obs_str)
-        if m:
-            return int(m.group(1)), int(m.group(2))
-        return None
-
-    def _parse_obstacles(self, obs_str):
-        # Looks for 'Obstacles: [(x1, y1), (x2, y2), ...]'
-        m = re.search(r"Obstacles: \[(.*?)\]", obs_str)
-        if m:
-            obstacles_str = m.group(1)
-            # Find all (x, y) tuples
-            tuples = re.findall(r"\((\d+),\s*(\d+)\)", obstacles_str)
-            return [(int(x), int(y)) for x, y in tuples]
-        return None
+    def _parse_obstacles(self, obstacles_str):
+        # Fix: gracefully handle empty string or whitespace
+        obstacles_str = obstacles_str.strip()
+        if obstacles_str == '' or obstacles_str == 'None':
+            return []
+        tuples = re.findall(r"\((\d+),\s*(\d+)\)", obstacles_str)
+        return [(int(x), int(y)) for x, y in tuples]
 
     def _next_position(self, x, y, action):
         # Action: 0=north, 1=south, 2=east, 3=west
