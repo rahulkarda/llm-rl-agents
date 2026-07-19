@@ -134,6 +134,7 @@ class GreedyGridAgent(Agent):
     Heuristic agent for SimpleGridWorldEnv: moves toward goal with tie-break preference (east, then south, then north).
     Optionally supports diagonal move preference if diagonal_preference=True.
     Observation must be a string encoding position and goal.
+    Now supports obstacle avoidance if obstacles are listed in observation.
     """
     def __init__(self, action_space, diagonal_preference=False):
         super().__init__()
@@ -141,41 +142,54 @@ class GreedyGridAgent(Agent):
         self.diagonal_preference = diagonal_preference
 
     def act(self, observation: Any) -> Any:
-        # Parse observation string for position and goal
-        pos = self._parse_position(observation)
-        goal = self._parse_goal(observation)
+        obs_str = str(observation)
+        pos = self._parse_position(obs_str)
+        goal = self._parse_goal(obs_str)
+        obstacles = self._parse_obstacles(obs_str)
         if pos is None or goal is None:
             action = self.action_space.sample()
         else:
             x, y = pos
             gx, gy = goal
-            dx = gx - x
-            dy = gy - y
-            # Diagonal preference: if both dx,dy != 0
-            if self.diagonal_preference and dx != 0 and dy != 0:
-                # Prefer east if dx>0, west if dx<0, else south/north
-                if abs(dx) >= abs(dy):
-                    if dx > 0:
-                        action = 2  # east
-                    else:
-                        action = 3  # west
-                else:
-                    if dy > 0:
-                        action = 1  # south
-                    else:
-                        action = 0  # north
+            move_candidates = []
+            # Diagonal preference
+            if self.diagonal_preference and x != gx and y != gy:
+                if gx > x and gy > y:
+                    move_candidates.append(2)  # east
+                    move_candidates.append(1)  # south
+                elif gx < x and gy < y:
+                    move_candidates.append(3)  # west
+                    move_candidates.append(0)  # north
+                elif gx > x and gy < y:
+                    move_candidates.append(2)  # east
+                    move_candidates.append(0)  # north
+                elif gx < x and gy > y:
+                    move_candidates.append(3)  # west
+                    move_candidates.append(1)  # south
+            # Normal axis-aligned moves
             else:
-                # Tie-break: prefer east, then south, then north, else west
-                if dx > 0:
-                    action = 2  # east
-                elif dy > 0:
-                    action = 1  # south
-                elif dy < 0:
-                    action = 0  # north
-                elif dx < 0:
-                    action = 3  # west
-                else:
-                    action = self.action_space.sample()
+                if gx > x:
+                    move_candidates.append(2)  # east
+                elif gx < x:
+                    move_candidates.append(3)  # west
+                if gy > y:
+                    move_candidates.append(1)  # south
+                elif gy < y:
+                    move_candidates.append(0)  # north
+            # Tie-break order: east, south, north, west
+            for a in [2, 1, 0, 3]:
+                if a not in move_candidates:
+                    move_candidates.append(a)
+            # Try moves in order, avoid obstacles
+            action = None
+            for candidate in move_candidates:
+                nx, ny = self._next_position(x, y, candidate)
+                if obstacles is not None and (nx, ny) in obstacles:
+                    continue
+                action = candidate
+                break
+            if action is None:
+                action = self.action_space.sample()
         self.step()
         return action
 
@@ -190,3 +204,26 @@ class GreedyGridAgent(Agent):
         if m:
             return int(m.group(1)), int(m.group(2))
         return None
+
+    def _parse_obstacles(self, obs_str):
+        # Looks for 'Obstacles: [(x1, y1), (x2, y2), ...]'
+        m = re.search(r"Obstacles: \[(.*?)\]", obs_str)
+        if m:
+            obstacles_str = m.group(1)
+            # Find all (x, y) tuples
+            tuples = re.findall(r"\((\d+),\s*(\d+)\)", obstacles_str)
+            return [(int(x), int(y)) for x, y in tuples]
+        return None
+
+    def _next_position(self, x, y, action):
+        # Action: 0=north, 1=south, 2=east, 3=west
+        if action == 0:
+            return x, y - 1
+        elif action == 1:
+            return x, y + 1
+        elif action == 2:
+            return x + 1, y
+        elif action == 3:
+            return x - 1, y
+        else:
+            return x, y
