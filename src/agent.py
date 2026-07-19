@@ -65,7 +65,6 @@ class RandomAgent(Agent):
 
     def act(self, observation: Any) -> Any:
         action = self.action_space.sample()
-        self.step()
         return action
 
 class DeterministicAgent(Agent):
@@ -89,7 +88,6 @@ class DeterministicAgent(Agent):
         # Highest priority: fixed_action
         if self.fixed_action is not None:
             action = self.fixed_action
-            self.step()
             return action
         # Discrete action space
         if hasattr(self.action_space, 'n'):
@@ -99,7 +97,6 @@ class DeterministicAgent(Agent):
                 raise TypeError(f"fixed_action_index {idx} is not an integer")
             if 0 <= idx < n:
                 action = idx
-                self.step()
                 return action
             else:
                 raise ValueError(f"fixed_action_index {idx} out of bounds for Discrete(n={n})")
@@ -109,7 +106,6 @@ class DeterministicAgent(Agent):
                 action = self.fixed_box_action
             else:
                 action = self.action_space.low
-            self.step()
             return action
         else:
             raise NotImplementedError("DeterministicAgent only supports Discrete/Box action spaces or fixed_action")
@@ -142,80 +138,62 @@ class GreedyGridAgent(Agent):
         self.diagonal_preference = diagonal_preference
 
     def act(self, observation: Any) -> Any:
-        # Observation: 'pos=(x,y), goal=(gx,gy), obstacles=[(x1,y1), (x2,y2)]' (string)
-        pos, goal, obstacles = self._parse_observation(observation)
-        x, y = pos
-        gx, gy = goal
-        # Heuristic: move toward goal, avoid obstacles
-        possible_actions = [0, 1, 2, 3]  # north, south, east, west
+        # Observation: 'pos=(x,y);goal=(gx,gy);obstacles=[(x1,y1),...]'
+        obs_info = self._parse_obs(observation)
+        x, y = obs_info['x'], obs_info['y']
+        gx, gy = obs_info['gx'], obs_info['gy']
+        obstacles = obs_info['obstacles']
         dx = gx - x
         dy = gy - y
-        # Tie-break preference: east, then south, then north
-        candidates = []
-        if self.diagonal_preference and dx != 0 and dy != 0:
-            # Prefer diagonal move toward goal
-            if dx > 0:
-                if dy > 0:
-                    candidates = [2, 1]  # east, south
-                elif dy < 0:
-                    candidates = [2, 0]  # east, north
-            elif dx < 0:
-                if dy > 0:
-                    candidates = [3, 1]  # west, south
-                elif dy < 0:
-                    candidates = [3, 0]  # west, north
-        else:
-            # Prefer east, then south, then north, then west
-            if dx > 0:
-                candidates.append(2)
-            elif dx < 0:
-                candidates.append(3)
-            if dy > 0:
-                candidates.append(1)
-            elif dy < 0:
-                candidates.append(0)
-            # Fill remaining actions by tie-break: east, south, north, west
-            for a in [2, 1, 0, 3]:
-                if a not in candidates:
-                    candidates.append(a)
-        # Obstacle avoidance: skip actions that lead to obstacle
-        if obstacles:
-            for a in candidates:
-                nx, ny = self._next_position(x, y, a)
+        # Diagonal preference: move both axes if possible
+        if self.diagonal_preference:
+            if dx != 0 and dy != 0:
+                action = 2 if dx > 0 else 3  # east/west
+                nx, ny = self._next_position(x, y, action)
                 if (nx, ny) not in obstacles:
-                    action = a
-                    self.step()
                     return action
-            # If all candidates blocked, pick random
-            action = self.action_space.sample()
-            self.step()
-            return action
-        else:
-            action = candidates[0] if candidates else self.action_space.sample()
-            self.step()
-            return action
+                action = 0 if dy < 0 else 1  # north/south
+                nx, ny = self._next_position(x, y, action)
+                if (nx, ny) not in obstacles:
+                    return action
+        # Regular tie-break: east, south, north, west
+        candidates = []
+        if dx > 0:
+            candidates.append(2)  # east
+        elif dx < 0:
+            candidates.append(3)  # west
+        if dy > 0:
+            candidates.append(1)  # south
+        elif dy < 0:
+            candidates.append(0)  # north
+        # Tie-break: east, then south, then north, then west
+        preferred_order = [2, 1, 0, 3]
+        for action in preferred_order:
+            if action in candidates:
+                nx, ny = self._next_position(x, y, action)
+                if (nx, ny) not in obstacles:
+                    return action
+        # If all blocked or at goal, pick random valid
+        for action in preferred_order:
+            nx, ny = self._next_position(x, y, action)
+            if (nx, ny) not in obstacles:
+                return action
+        return 0  # fallback: north
 
-    def _parse_observation(self, obs_str):
-        # Example: 'pos=(1,2), goal=(5,8), obstacles=[(3,4), (2,2)]'
+    def _parse_obs(self, obs_str):
+        # Example: 'pos=(3,2);goal=(7,7);obstacles=[(2,3),(4,5)]'
         pos_match = re.search(r"pos=\((\d+),(\d+)\)", obs_str)
         goal_match = re.search(r"goal=\((\d+),(\d+)\)", obs_str)
         obstacles_match = re.search(r"obstacles=\[(.*?)\]", obs_str)
-        x, y = (0, 0)
-        gx, gy = (0, 0)
-        obstacles = []
-        if pos_match:
-            x, y = int(pos_match.group(1)), int(pos_match.group(2))
-        if goal_match:
-            gx, gy = int(goal_match.group(1)), int(goal_match.group(2))
-        if obstacles_match:
-            obstacles_str = obstacles_match.group(1)
-            obstacles = self._parse_obstacles(obstacles_str)
-        return (x, y), (gx, gy), obstacles
+        x = int(pos_match.group(1)) if pos_match else 0
+        y = int(pos_match.group(2)) if pos_match else 0
+        gx = int(goal_match.group(1)) if goal_match else 0
+        gy = int(goal_match.group(2)) if goal_match else 0
+        obstacles = self._parse_obstacles(obstacles_match.group(1) if obstacles_match else "None")
+        return {'x': x, 'y': y, 'gx': gx, 'gy': gy, 'obstacles': obstacles}
 
     def _parse_obstacles(self, obstacles_str):
-        # Fix: gracefully handle empty string or whitespace
-        obstacles_str = obstacles_str.strip()
-        if obstacles_str == '' or obstacles_str == 'None':
+        if obstacles_str.strip() == '' or obstacles_str.strip() == 'None':
             return []
         tuples = re.findall(r"\((\d+),\s*(\d+)\)", obstacles_str)
         return [(int(x), int(y)) for x, y in tuples]

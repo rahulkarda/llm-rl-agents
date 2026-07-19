@@ -74,6 +74,8 @@ def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=No
         while not (done or truncated):
             action = current_agent.act(obs)
             obs, reward, done, truncated, info = env.step(action)
+            if hasattr(current_agent, 'step'):
+                current_agent.step()
             total_reward += reward
         # Determine win
         if win_criteria:
@@ -108,83 +110,9 @@ def evaluate_cost_per_episode(agent, env_fn, episodes=10, cost_keys=("cost", "ap
         episodes: Number of episodes.
         cost_keys: Tuple of keys to look for in transition dicts (top-level or under 'info').
     Returns:
-        dict with keys: 'avg_cost', 'episode_costs', 'cost_key_stats'
-    """
-    episode_costs = []
-    cost_key_stats = {k: [] for k in cost_keys}
-    for ep in range(episodes):
-        env = env_fn()
-        obs, _ = env.reset()
-        done = False
-        truncated = False
-        transitions = []
-        agent.reset()
-        while not (done or truncated):
-            action = agent.act(obs)
-            obs, reward, done, truncated, info = env.step(action)
-            transition = {
-                "observation": obs,
-                "action": action,
-                "reward": reward,
-                "info": info,
-            }
-            transitions.append(transition)
-        # Compute episode cost
-        total_cost = 0.0
-        for t in transitions:
-            for key in cost_keys:
-                val = None
-                if key in t:
-                    val = t[key]
-                elif "info" in t and key in t["info"]:
-                    val = t["info"][key]
-                if val is not None:
-                    total_cost += float(val)
-                    cost_key_stats[key].append(float(val))
-        episode_costs.append(total_cost)
-        env.close()
-    avg_cost = sum(episode_costs) / len(episode_costs) if episode_costs else 0.0
-    return {
-        "avg_cost": avg_cost,
-        "episode_costs": episode_costs,
-        "cost_key_stats": cost_key_stats
-    }
-
-
-def compare_traces_side_by_side(trace_a, trace_b, keys=None):
-    """
-    Step-wise comparison of two episode traces.
-    Args:
-        trace_a: list of dicts (transitions)
-        trace_b: list of dicts (transitions)
-        keys: list of keys to compare. If None, auto-select keys from both traces.
-    Returns:
-        list of dicts with step index and values for each trace, plus diff fields.
-    """
-    out = []
-    max_len = max(len(trace_a), len(trace_b))
-    # Auto-select keys if not provided
-    if keys is None:
-        keys_a = flatten_dict_keys(trace_a[0]) if trace_a else []
-        keys_b = flatten_dict_keys(trace_b[0]) if trace_b else []
-        keys = sorted(list(set(keys_a + keys_b)))
-    for i in range(max_len):
-        ta = trace_a[i] if i < len(trace_a) else {}
-        tb = trace_b[i] if i < len(trace_b) else {}
-        step_cmp = {"step": i}
-        for k in keys:
-            va = ta.get(k, None)
-            vb = tb.get(k, None)
-            step_cmp[f"a_{k}"] = va
-            step_cmp[f"b_{k}"] = vb
-            step_cmp[f"diff_{k}"] = va != vb
-        out.append(step_cmp)
-    return out
-
-
-def episode_reward_summary(trace):
-    """
-    Compute total, mean, and step-wise rewards from an episode trace (list of dicts with 'reward' key).
+        dict w
+... [truncated]
+ key).
     Returns:
         dict with keys: 'total_reward', 'mean_reward', 'step_rewards'
     """
