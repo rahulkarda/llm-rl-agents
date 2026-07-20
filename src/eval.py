@@ -45,7 +45,7 @@ from agent import RandomAgent
 from utils import compute_episode_cost, flatten_dict_keys, dict_values_to_list
 
 
-def evaluate_win_rate(agent, env_fn, episodes=50, baseline=None, win_criteria=None):
+def evaluate_win_rate(agent, env_fn, episodes=100, baseline=None, win_criteria=None):
     """
     Evaluate win-rate of agent vs baseline on env_fn across episodes.
     Args:
