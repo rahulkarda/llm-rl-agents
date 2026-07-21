@@ -147,6 +147,13 @@ val1 = deep_get(d, ['a', 'b', 'c'])   # 5
 val2 = deep_get(d, ['x', 'y'])        # 42
 val3 = deep_get(d, ['a', 'b', 'z'])   # None
 ```
+- `deep_get` returns the value at the nested path if present, or None if any key is missing along the path.
+- It safely handles missing keys and non-dict intermediate values without raising errors.
+- Example edge case:
+```python
+val4 = deep_get(d, ['a', 'b'])        # {'c': 5}
+val5 = deep_get(d, ['a', 'b', 'c', 'd']) # None (since 'c' is not a dict)
+```
 - Useful for safely handling deeply nested info dicts or episode transitions.
 
 ## Design notes
