@@ -27,3 +27,4 @@
 - [x] Cost-per-episode tracking
 - [x] Side-by-side trace comparison
 - [x] Test for deep_get utility
+- [x] Test for episode_reward_summary utility
