@@ -74,18 +74,30 @@ class DeterministicAgent(Agent):
     - If fixed_action is set, always returns it.
     - For Discrete: returns fixed_action_index (default 0).
     - For Box: returns action_space.low.
+    - New: Supports step-wise fixed action sequence (fixed_action_sequence).
     """
     def __init__(self, action_space, fixed_action=None):
         super().__init__()
         self.action_space = action_space
         self.fixed_action = fixed_action
         self.fixed_action_index = 0  # Default for Discrete
-        self.fixed_box_action = None  # New: For Box action space
+        self.fixed_box_action = None  # For Box action space
+        self.fixed_action_sequence = None  # New: Sequence of actions
+        self._sequence_cursor = 0     # Internal pointer for sequence
         if fixed_action is not None:
             assert self.action_space.contains(fixed_action), "fixed_action not in action_space"
 
     def act(self, observation: Any) -> Any:
-        # Highest priority: fixed_action
+        # Highest priority: step-wise action sequence (if set)
+        if self.fixed_action_sequence is not None:
+            if self._sequence_cursor >= len(self.fixed_action_sequence):
+                # If out of actions, repeat last
+                action = self.fixed_action_sequence[-1]
+            else:
+                action = self.fixed_action_sequence[self._sequence_cursor]
+            self._sequence_cursor += 1
+            return action
+        # Next: fixed_action
         if self.fixed_action is not None:
             action = self.fixed_action
             return action
@@ -125,6 +137,21 @@ class DeterministicAgent(Agent):
             raise ValueError(f"fixed_action {action} not in action_space")
         self.fixed_box_action = action
 
+    def set_fixed_action_sequence(self, action_sequence):
+        """
+        Set a sequence of actions to play step-wise during each episode.
+        Resets pointer on set; does not check validity for each action.
+        """
+        self.fixed_action_sequence = action_sequence
+        self._sequence_cursor = 0
+
+    def reset(self):
+        """
+        Called at episode start. Resets step_count and action sequence pointer.
+        """
+        super().reset()
+        self._sequence_cursor = 0
+
 class GreedyGridAgent(Agent):
     """
     Heuristic agent for SimpleGridWorldEnv: moves toward goal with tie-break preference (east, then south, then north).
@@ -138,25 +165,34 @@ class GreedyGridAgent(Agent):
         self.diagonal_preference = diagonal_preference
 
     def act(self, observation: Any) -> Any:
-        # Observation: 'pos=(x,y);goal=(gx,gy);obstacles=[(x1,y1),...]'
-        obs_info = self._parse_obs(observation)
-        x, y = obs_info['x'], obs_info['y']
-        gx, gy = obs_info['gx'], obs_info['gy']
-        obstacles = obs_info['obstacles']
+        # Parse observation string: "Pos: (x, y), Goal: (gx, gy), Obstacles: [(x1, y1), ...]"
+        x, y, gx, gy, obstacles = self._parse_obs(observation)
+        moves = self._get_move_candidates(x, y, gx, gy)
+        # Avoid obstacles
+        for action in moves:
+            nx, ny = self._next_position(x, y, action)
+            if (nx, ny) not in obstacles:
+                return action
+        # If all blocked, pick random valid action
+        return self.action_space.sample()
+
+    def _parse_obs(self, obs_str):
+        # Extract position, goal, obstacles from obs_str
+        pos_match = re.search(r"Pos: \((\d+),\s*(\d+)\)", obs_str)
+        goal_match = re.search(r"Goal: \((\d+),\s*(\d+)\)", obs_str)
+        obstacles_match = re.search(r"Obstacles: ([^\n]*)", obs_str)
+        x = int(pos_match.group(1)) if pos_match else 0
+        y = int(pos_match.group(2)) if pos_match else 0
+        gx = int(goal_match.group(1)) if goal_match else 0
+        gy = int(goal_match.group(2)) if goal_match else 0
+        obstacles = self._parse_obstacles(obstacles_match.group(1) if obstacles_match else '')
+        return x, y, gx, gy, obstacles
+
+    def _get_move_candidates(self, x, y, gx, gy):
+        # Returns list of actions ordered by greedy preference
         dx = gx - x
         dy = gy - y
-        # Diagonal preference: move both axes if possible
-        if self.diagonal_preference:
-            if dx != 0 and dy != 0:
-                action = 2 if dx > 0 else 3  # east/west
-                nx, ny = self._next_position(x, y, action)
-                if (nx, ny) not in obstacles:
-                    return action
-                action = 0 if dy < 0 else 1  # north/south
-                nx, ny = self._next_position(x, y, action)
-                if (nx, ny) not in obstacles:
-                    return action
-        # Regular tie-break: east, south, north, west
+        # Action: 0=north, 1=south, 2=east, 3=west
         candidates = []
         if dx > 0:
             candidates.append(2)  # east
@@ -166,34 +202,16 @@ class GreedyGridAgent(Agent):
             candidates.append(1)  # south
         elif dy < 0:
             candidates.append(0)  # north
-        # Tie-break: east, then south, then north, then west
-        preferred_order = [2, 1, 0, 3]
-        for action in preferred_order:
-            if action in candidates:
-                nx, ny = self._next_position(x, y, action)
-                if (nx, ny) not in obstacles:
-                    return action
-        # If all blocked or at goal, pick random valid
-        for action in preferred_order:
-            nx, ny = self._next_position(x, y, action)
-            if (nx, ny) not in obstacles:
-                return action
-        return 0  # fallback: north
-
-    def _parse_obs(self, obs_str):
-        # Example: 'pos=(3,2);goal=(7,7);obstacles=[(2,3),(4,5)]'
-        pos_match = re.search(r"pos=\((\d+),(\d+)\)", obs_str)
-        goal_match = re.search(r"goal=\((\d+),(\d+)\)", obs_str)
-        obstacles_match = re.search(r"obstacles=\[(.*?)\]", obs_str)
-        x = int(pos_match.group(1)) if pos_match else 0
-        y = int(pos_match.group(2)) if pos_match else 0
-        gx = int(goal_match.group(1)) if goal_match else 0
-        gy = int(goal_match.group(2)) if goal_match else 0
-        obstacles = self._parse_obstacles(obstacles_match.group(1) if obstacles_match else "None")
-        return {'x': x, 'y': y, 'gx': gx, 'gy': gy, 'obstacles': obstacles}
+        # Tie-break: east, south, north, west
+        pref_order = [2, 1, 0, 3]
+        for a in pref_order:
+            if a not in candidates:
+                candidates.append(a)
+        return candidates
 
     def _parse_obstacles(self, obstacles_str):
-        if obstacles_str.strip() == '' or obstacles_str.strip() == 'None':
+        # Parse obstacles as list of (x, y) tuples
+        if not obstacles_str or obstacles_str.strip() == 'None':
             return []
         tuples = re.findall(r"\((\d+),\s*(\d+)\)", obstacles_str)
         return [(int(x), int(y)) for x, y in tuples]
